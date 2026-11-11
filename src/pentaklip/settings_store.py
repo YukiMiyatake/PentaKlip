@@ -114,7 +114,7 @@ def pick_directory(*, title: str = "フォルダを選択", initial: str | None 
             return str(Path(selected).resolve())
         return None
     except Exception:
-        pass
+        logger.debug('tkinter folder picker unavailable', exc_info=True)
 
     # Windows fallback: WinForms FolderBrowserDialog via PowerShell.
     import platform
