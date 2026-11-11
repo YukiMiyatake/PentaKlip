@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from pentaklip.stats.catalog import (
+    LCK_RADAR_STAT_KEYS,
     SERIES_STAT_KEYS,
+    SIGNED_RADAR_STAT_KEYS,
     STAT_LABELS,
     Position,
     StatKey,
@@ -140,8 +142,11 @@ def _lane_compare_chart(
 
 
 def _radar_axis_keys(columns: list[StatKey]) -> list[StatKey]:
-    keys = [k for k in columns if k not in _COMPARE_SKIP and k not in SERIES_STAT_KEYS]
-    return keys[:_RADAR_MAX_AXES]
+    """Prefer LCK octagon order, then remaining selected table columns."""
+    usable = [k for k in columns if k not in _COMPARE_SKIP and k not in SERIES_STAT_KEYS]
+    preferred = [k for k in LCK_RADAR_STAT_KEYS if k in usable]
+    rest = [k for k in usable if k not in preferred]
+    return [*preferred, *rest][:_RADAR_MAX_AXES]
 
 
 def _mean_scalar(players: list[PlayerPositionAggregate], key: StatKey) -> float | None:
@@ -180,9 +185,13 @@ def _normalize_radar_value(
     peak: float,
     *,
     lower_is_better: bool,
+    signed: bool = False,
 ) -> float | None:
     if value is None or peak <= 0:
         return None
+    if signed:
+        # Map [-peak, +peak] → [0, 1] so even (0) sits at the center ring.
+        return max(0.0, min(1.0, (value + peak) / (2.0 * peak)))
     ratio = max(0.0, min(1.0, abs(value) / peak))
     return (1.0 - ratio) if lower_is_better else ratio
 
@@ -219,6 +228,7 @@ def _radar_charts_for_position(
             if peak <= 0:
                 peak = 1.0
             lower = key in _RADAR_LOWER_BETTER
+            signed = key in SIGNED_RADAR_STAT_KEYS
             rows.append(
                 {
                     "stat_key": key.value,
@@ -226,13 +236,20 @@ def _radar_charts_for_position(
                     "player": player_v,
                     "baseline": baseline_v,
                     "player_norm": _normalize_radar_value(
-                        player_v, peak, lower_is_better=lower
+                        player_v,
+                        peak,
+                        lower_is_better=lower,
+                        signed=signed,
                     ),
                     "baseline_norm": _normalize_radar_value(
-                        baseline_v, peak, lower_is_better=lower
+                        baseline_v,
+                        peak,
+                        lower_is_better=lower,
+                        signed=signed,
                     ),
                     "max": peak,
                     "lower_is_better": lower,
+                    "signed": signed,
                 }
             )
         if len(rows) < 3:

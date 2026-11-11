@@ -59,8 +59,8 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
     jg_table = next(c for c in charts.charts if c.chart_id == "table-JUNGLE")
     assert "Dragons" in jg_table.columns
     assert "CS" in jg_table.columns
-    assert "CSPM" in jg_table.columns
-    assert "Gold" in jg_table.columns
+    assert "CSM" in jg_table.columns
+    assert "Gold (active)" in jg_table.columns
     jg_radar = next(c for c in charts.charts if c.chart_id.startswith("radar-JUNGLE-"))
     assert len(jg_radar.rows) >= 6
     assert any(c.title.startswith("SUPPORT") for c in charts.charts)
@@ -68,6 +68,62 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
 
     catalog = TestClient(app).get("/api/stats/catalog").json()
     assert catalog["position_labels"]["UTILITY"] == "SUPPORT"
+    assert "csd15" in {k["key"] for k in catalog["table_stat_keys"]}
+    mid_axes = {r["stat_key"] for r in mid_radar.rows}
+    assert "cs_per_min" in mid_axes
+    assert "kda_ratio" in mid_axes
+    assert "kill_participation" in mid_axes
+
+
+def test_csd15_and_lvld15_vs_lane_opponent() -> None:
+    """CSD15 / LVLD15 need ~15m samples and an opposite-lane opponent."""
+    from fixtures.allgamedata_sample import make_player
+
+    def payload(game_time: float, *, mid_cs: int, mid_level: int, foe_cs: int, foe_level: int):
+        data = all_game_data_at(game_time, mid_kills=1, mid_cs=mid_cs)
+        # bump ORDER mid level
+        for p in data["allPlayers"]:
+            if p.get("riotIdGameName") == "MidLaner":
+                p["level"] = mid_level
+        data["allPlayers"].append(
+            make_player(
+                name="EnemyMid",
+                champion="Syndra",
+                position="MIDDLE",
+                team="CHAOS",
+                kills=0,
+                deaths=1,
+                assists=0,
+                cs=foe_cs,
+                ward=2.0,
+                level=foe_level,
+            )
+        )
+        return data
+
+    session = StatsCaptureSession(original_match_id="LANE-DIFF")
+    session.ingest_all_game_data(payload(600.0, mid_cs=80, mid_level=9, foe_cs=70, foe_level=8))
+    session.ingest_all_game_data(payload(900.0, mid_cs=120, mid_level=11, foe_cs=100, foe_level=10))
+    aggregated = aggregate_replay(session.finalize())
+    mid = next(p for p in aggregated.players if p.player_id == "MidLaner#JP1")
+    foe = next(p for p in aggregated.players if p.player_id == "EnemyMid#JP1")
+    assert mid.scalars[StatKey.CS_AT_15.value] == 120
+    assert mid.scalars[StatKey.CSD15.value] == 20.0
+    assert foe.scalars[StatKey.CSD15.value] == -20.0
+    assert mid.scalars[StatKey.LVLD15.value] == 1.0
+    assert foe.scalars[StatKey.LVLD15.value] == -1.0
+    assert mid.scalars[StatKey.OBJECTIVE_SCORE.value] >= 1
+
+    charts = build_charts(aggregated, default_display_settings())
+    radar = next(c for c in charts.charts if c.chart_id.startswith("radar-MIDDLE-MidLaner"))
+    keys = [r["stat_key"] for r in radar.rows]
+    assert keys[:5] == [
+        "cs_per_min",
+        "kda_ratio",
+        "kill_participation",
+        "csd15",
+        "lvld15",
+    ]
 
 
 def test_display_settings_per_lane_filter() -> None:
@@ -83,7 +139,7 @@ def test_display_settings_per_lane_filter() -> None:
     charts = build_charts(aggregated, cleaned)
     top_table = next(c for c in charts.charts if c.chart_id == "table-TOP")
     assert "Kills" in top_table.columns
-    assert "CSPM" in top_table.columns
+    assert "CSM" in top_table.columns
     assert "Vision Score" not in top_table.columns
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from pentaklip.stats.catalog import (
+    LCK_RADAR_STAT_KEYS,
     SERIES_STAT_KEYS,
     TABLE_STAT_KEYS,
     Position,
@@ -26,49 +27,42 @@ class DisplaySettings(BaseModel):
 
 
 def default_display_settings() -> DisplaySettings:
-    """LCK-ish defaults; junglers emphasize vision/objectives, lanes emphasize CS/KDA."""
+    """LCK-ish defaults; radar axes lead with Live Client proxies for the LCK octagon."""
+    # First columns drive radar (see LCK_RADAR_STAT_KEYS); extras follow for tables.
+    lck_lead = [StatKey.CHAMPION, *LCK_RADAR_STAT_KEYS]
     shared_table = [
-        StatKey.CHAMPION,
+        *lck_lead,
         StatKey.KILLS,
         StatKey.DEATHS,
         StatKey.ASSISTS,
-        StatKey.KDA_RATIO,
-        StatKey.KILL_PARTICIPATION,
         StatKey.CREEP_SCORE,
-        StatKey.CS_PER_MIN,
+        StatKey.CS_AT_15,
+        StatKey.LEVEL_AT_15,
         StatKey.WARD_SCORE,
-        StatKey.VISION_PER_MIN,
         StatKey.LEVEL,
     ]
     jg_table = [
-        StatKey.CHAMPION,
+        *lck_lead,
         StatKey.KILLS,
         StatKey.DEATHS,
         StatKey.ASSISTS,
-        StatKey.KDA_RATIO,
-        StatKey.KILL_PARTICIPATION,
+        StatKey.CREEP_SCORE,
+        StatKey.CS_AT_15,
+        StatKey.LEVEL_AT_15,
         StatKey.WARD_SCORE,
-        StatKey.VISION_PER_MIN,
         StatKey.DRAGON_KILLS,
         StatKey.BARON_KILLS,
         StatKey.HERALD_KILLS,
-        StatKey.CREEP_SCORE,
-        StatKey.CS_PER_MIN,
-        StatKey.TOWER_KILLS,
         StatKey.INHIBITOR_KILLS,
         StatKey.GOLD,
         StatKey.LEVEL,
     ]
     support_table = [
-        StatKey.CHAMPION,
+        *lck_lead,
         StatKey.KILLS,
         StatKey.DEATHS,
         StatKey.ASSISTS,
-        StatKey.KDA_RATIO,
-        StatKey.KILL_PARTICIPATION,
         StatKey.WARD_SCORE,
-        StatKey.VISION_PER_MIN,
-        StatKey.TOWER_KILLS,
         StatKey.LEVEL,
     ]
     shared_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES, StatKey.LEVEL_SERIES]

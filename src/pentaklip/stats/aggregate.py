@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from collections import defaultdict
 from typing import Any
 
@@ -24,6 +25,78 @@ def _score(scores: dict[str, Any], *keys: str, default: float = 0.0) -> float:
 
 def _kda_ratio(kills: float, deaths: float, assists: float) -> float:
     return (kills + assists) / max(deaths, 1.0)
+
+
+def _as_optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+_MARK_15_SEC = 15.0 * 60.0
+
+
+def _value_at_time(
+    points: list[TimePoint],
+    target_sec: float,
+    *,
+    max_edge_delta: float = 120.0,
+) -> float | None:
+    """Linear-interpolate a series at target_sec (for CSD15 / LVLD15)."""
+    if not points:
+        return None
+    ordered = sorted(points, key=lambda p: p.game_time_sec)
+    if target_sec <= ordered[0].game_time_sec:
+        if ordered[0].game_time_sec - target_sec > max_edge_delta:
+            return None
+        return ordered[0].value
+    if target_sec >= ordered[-1].game_time_sec:
+        if target_sec - ordered[-1].game_time_sec > max_edge_delta:
+            return None
+        return ordered[-1].value
+    for left, right in itertools.pairwise(ordered):
+        if left.game_time_sec <= target_sec <= right.game_time_sec:
+            span = right.game_time_sec - left.game_time_sec
+            if span <= 1e-9:
+                return right.value
+            ratio = (target_sec - left.game_time_sec) / span
+            return left.value + (right.value - left.value) * ratio
+    return None
+
+
+def _objective_score(counts: dict[str, int]) -> int:
+    return int(
+        counts.get(StatKey.DRAGON_KILLS.value, 0)
+        + counts.get(StatKey.BARON_KILLS.value, 0)
+        + counts.get(StatKey.HERALD_KILLS.value, 0)
+        + counts.get(StatKey.TOWER_KILLS.value, 0)
+        + counts.get(StatKey.INHIBITOR_KILLS.value, 0)
+    )
+
+
+def _lane_opponent(
+    focus: PlayerPositionAggregate,
+    players: list[PlayerPositionAggregate],
+) -> PlayerPositionAggregate | None:
+    """Prefer the single opposite-team player on the same lane."""
+    same_lane = [
+        p
+        for p in players
+        if p.position == focus.position and p.player_id != focus.player_id
+    ]
+    if not same_lane:
+        return None
+    opposite = [
+        p
+        for p in same_lane
+        if focus.team and p.team and str(p.team) != str(focus.team)
+    ]
+    pool = opposite or same_lane
+    if len(pool) == 1:
+        return pool[0]
+    return None
 
 
 def _active_gold(active_player: dict[str, Any], player_id: str) -> float | None:
@@ -172,6 +245,11 @@ def aggregate_replay(bundle: ReplayStatsBundle) -> AggregatedReplayStats:
             kp = (scores["kills"] + scores["assists"]) / team_kills[team] * 100.0
         gold_series = series[key].get(StatKey.GOLD_SERIES, [])
         gold_last = gold_series[-1].value if gold_series else None
+        cs_at_15 = _value_at_time(series[key].get(StatKey.CS_SERIES, []), _MARK_15_SEC)
+        level_at_15 = _value_at_time(
+            series[key].get(StatKey.LEVEL_SERIES, []), _MARK_15_SEC
+        )
+        obj = _objective_score(event_counts[key])
         agg = PlayerPositionAggregate(
             player_id=key[0],
             position=key[1],
@@ -190,9 +268,18 @@ def aggregate_replay(bundle: ReplayStatsBundle) -> AggregatedReplayStats:
                 StatKey.KILL_PARTICIPATION.value: round(kp, 1),
                 StatKey.CREEP_SCORE.value: int(scores["cs"]),
                 StatKey.CS_PER_MIN.value: round(scores["cs"] / minutes, 2),
+                StatKey.CS_AT_15.value: (
+                    round(cs_at_15, 1) if cs_at_15 is not None else None
+                ),
+                StatKey.LEVEL_AT_15.value: (
+                    round(level_at_15, 2) if level_at_15 is not None else None
+                ),
+                StatKey.CSD15.value: None,
+                StatKey.LVLD15.value: None,
                 StatKey.WARD_SCORE.value: round(scores["ward"], 1),
                 StatKey.VISION_PER_MIN.value: round(scores["ward"] / minutes, 2),
                 StatKey.LEVEL.value: int(scores["level"]),
+                StatKey.OBJECTIVE_SCORE.value: obj,
                 StatKey.GOLD.value: gold_last,
                 StatKey.ITEM_COUNT.value: int(scores["item_count"]),
                 StatKey.DRAGON_KILLS.value: event_counts[key].get(StatKey.DRAGON_KILLS.value, 0),
@@ -208,6 +295,20 @@ def aggregate_replay(bundle: ReplayStatsBundle) -> AggregatedReplayStats:
             raw_last_player=last_player[key],
         )
         players.append(agg)
+
+    # Lane diffs at 15:00 vs the opposite-lane opponent (LCK CSD15 / ~XPD15).
+    for player in players:
+        opp = _lane_opponent(player, players)
+        if opp is None:
+            continue
+        my_cs = _as_optional_float(player.scalars.get(StatKey.CS_AT_15.value))
+        opp_cs = _as_optional_float(opp.scalars.get(StatKey.CS_AT_15.value))
+        if my_cs is not None and opp_cs is not None:
+            player.scalars[StatKey.CSD15.value] = round(my_cs - opp_cs, 1)
+        my_lvl = _as_optional_float(player.scalars.get(StatKey.LEVEL_AT_15.value))
+        opp_lvl = _as_optional_float(opp.scalars.get(StatKey.LEVEL_AT_15.value))
+        if my_lvl is not None and opp_lvl is not None:
+            player.scalars[StatKey.LVLD15.value] = round(my_lvl - opp_lvl, 2)
 
     players.sort(key=lambda p: (p.position.value, p.player_id))
     team_totals = {
@@ -252,6 +353,13 @@ def merge_aggregates(parts: list[AggregatedReplayStats]) -> list[PlayerPositionA
         StatKey.HERALD_KILLS.value,
         StatKey.TOWER_KILLS.value,
         StatKey.INHIBITOR_KILLS.value,
+        StatKey.OBJECTIVE_SCORE.value,
+    }
+    avg_keys = {
+        StatKey.CS_AT_15.value,
+        StatKey.LEVEL_AT_15.value,
+        StatKey.CSD15.value,
+        StatKey.LVLD15.value,
     }
     for (player_id, position), items in sorted(buckets.items()):
         total_duration = sum(a.game_duration_sec for a, _ in items) or 1.0
@@ -264,6 +372,13 @@ def merge_aggregates(parts: list[AggregatedReplayStats]) -> list[PlayerPositionA
             scalars[key] = int(
                 sum(float(p.scalars.get(key) or 0) for _, p in items)
             )
+        for key in avg_keys:
+            vals = [
+                _as_optional_float(p.scalars.get(key))
+                for _, p in items
+            ]
+            present = [v for v in vals if v is not None]
+            scalars[key] = round(sum(present) / len(present), 2) if present else None
         kills = float(scalars[StatKey.KILLS.value] or 0)
         deaths = float(scalars[StatKey.DEATHS.value] or 0)
         assists = float(scalars[StatKey.ASSISTS.value] or 0)
