@@ -58,7 +58,6 @@ from pentaklip.settings_store import (
     save_ui_preferences,
 )
 from pentaklip.stats.aggregate import aggregate_replay
-from pentaklip.stats.folder_aggregate import aggregate_stats_folder
 from pentaklip.stats.catalog import (
     SERIES_STAT_KEYS,
     STAT_LABELS,
@@ -75,6 +74,7 @@ from pentaklip.stats.display import (
     validate_display_settings,
 )
 from pentaklip.stats.export import export_replay_stats, load_replay_stats
+from pentaklip.stats.folder_aggregate import aggregate_stats_folder
 from pentaklip.stats.models import AggregatedReplayStats, ChartBundle
 from pentaklip.stats.sessions import create_session, get_session, pop_session
 from pentaklip.store.db import get_database

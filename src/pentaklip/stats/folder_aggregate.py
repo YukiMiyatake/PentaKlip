@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
-from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -35,8 +37,8 @@ def _load_one_aggregated(path: Path) -> AggregatedReplayStats | None:
     if isinstance(data.get("aggregated"), dict):
         try:
             return AggregatedReplayStats.model_validate(data["aggregated"])
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:
+            logger.debug('invalid aggregated block', exc_info=True)
     if "snapshots" in data or (
         "schema_version" in data and "events" in data and "players" not in data
     ):

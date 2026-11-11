@@ -71,7 +71,7 @@ export function DisplaySettingsPage() {
     const name = raw.includes("#") ? raw.split("#", 1)[0].trim() : raw;
     if (!name) return;
     const existing = settings.roster_by_position?.[position] ?? [];
-    if (existing.some((n) => n.casefold() === name.casefold())) {
+    if (existing.some((n) => n.toLowerCase() === name.toLowerCase())) {
       setDraftNames((d) => ({ ...d, [position]: "" }));
       return;
     }

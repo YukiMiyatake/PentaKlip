@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from pentaklip.stats.catalog import Position
 from pentaklip.stats.identity import PlayerIdentity
