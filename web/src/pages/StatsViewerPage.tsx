@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneCompareChart } from "../components/LaneCompareChart";
+import { RadarStatChart } from "../components/RadarStatChart";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
 import type { AggregatedReplayStats, ChartBundle } from "../types";
@@ -87,15 +88,30 @@ export function StatsViewerPage() {
 
   const compares =
     bundle?.charts.filter((c) => c.chart_type === "lane_compare") ?? [];
+  const radars = bundle?.charts.filter((c) => c.chart_type === "radar") ?? [];
   const tables = bundle?.charts.filter((c) => c.chart_type === "table") ?? [];
   const lines = bundle?.charts.filter((c) => c.chart_type === "line") ?? [];
+
+  const obsUrl = (() => {
+    const u = new URL("/obs", window.location.origin);
+    if (directory.trim()) u.searchParams.set("dir", directory.trim());
+    u.searchParams.set("refresh", "30");
+    return u.toString();
+  })();
 
   return (
     <section className="panel">
       <h2>スタッツ表示</h2>
       <p className="hint">
         同じフォルダ内の <span className="mono">*_stats_aggregated.json</span>（なければ bundle）をすべて読み、
-        レーン登録名であいまい一致したうえで複数試合の平均を出します。レーンごとに LCK 風のプレイヤー比較グラフを表示します。
+        レーン登録名であいまい一致したうえで複数試合の平均を出します。レーダー（五〜六角形）とレーン比較を表示します。
+      </p>
+      <p className="hint">
+        OBS Browser Source:{" "}
+        <a className="mono" href={obsUrl} target="_blank" rel="noreferrer">
+          {obsUrl}
+        </a>
+        （背景透過・点線は対戦相手/平均）
       </p>
 
       <div className="result-box" style={{ marginBottom: 16 }}>
@@ -124,6 +140,15 @@ export function StatsViewerPage() {
       </div>
       {meta ? <p className="success">{meta}</p> : null}
       {error ? <p className="error">{error}</p> : null}
+
+      {radars.length > 0 ? (
+        <div className="radar-grid" style={{ marginTop: 20 }}>
+          <h3 className="section-title">レーダー（自分=塗り / 相手・平均=点線）</h3>
+          {radars.map((chart) => (
+            <RadarStatChart key={chart.chart_id} chart={chart} />
+          ))}
+        </div>
+      ) : null}
 
       {compares.length > 0 ? (
         <div className="lane-compare-grid" style={{ marginTop: 20 }}>
