@@ -37,12 +37,31 @@ API 起動:
 python -m pentaklip --reload
 ```
 
+WebUI（開発）:
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+`http://127.0.0.1:5173`（`/api` は Vite 経由で `8787` にプロキシ）
+
+本番相当（静的ファイルを API と同梱）:
+
+```powershell
+cd web
+npm run build
+python -m pentaklip
+```
+
 ヘルスチェック: `http://127.0.0.1:8787/api/health`
 
 テスト:
 
 ```powershell
 pytest
+cd web; npm run build
 ```
 
 ## パッケージ構成
