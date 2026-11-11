@@ -160,3 +160,18 @@ class AutoSplitRequest(BaseModel):
     padding_before_sec: float | None = None
     padding_after_sec: float | None = None
     dry_run: bool = False
+
+class ExportEventsRequest(BaseModel):
+    output_path: str | None = None
+    directory: str | None = None
+    filename: str | None = None
+    events: list[dict] | None = None
+    game_time_sec: float | None = None
+    source: str = "liveclientdata"
+
+
+class ExportEventsResponse(BaseModel):
+    path: str
+    event_count: int
+    game_time_sec: float | None = None
+    source: str = "liveclientdata"

@@ -22,6 +22,8 @@ from pentaklip.api.schemas import (
     CreatedClipItem,
     DetectRequest,
     DetectResponse,
+    ExportEventsRequest,
+    ExportEventsResponse,
     FinalizeStatsRequest,
     FinalizeStatsResponse,
     HealthResponse,
@@ -38,6 +40,7 @@ from pentaklip.api.schemas import (
 from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
 from pentaklip.detect.service import detect_from_events
+from pentaklip.events.service import export_events_json, fetch_live_events
 from pentaklip.replay.install import (
     install_replay,
     list_local_replays,
@@ -305,6 +308,40 @@ def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
         dry_run=body.dry_run,
     )
     return api_create_clips(create_body)
+
+@app.get("/api/events/live")
+def api_events_live() -> dict:
+    """Return current Live Client events (empty/unavailable when LoL is not running)."""
+    return fetch_live_events().model_dump()
+
+
+@app.post("/api/events/export", response_model=ExportEventsResponse)
+def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
+    """Fetch Live Client events (or use provided events) and write clip-compatible JSON."""
+    prefs = load_ui_preferences(settings.data_dir)
+    default_dir = Path(prefs.last_events_dir) if prefs.last_events_dir else settings.data_dir / "events"
+    try:
+        result = export_events_json(
+            output_path=body.output_path,
+            directory=body.directory,
+            filename=body.filename,
+            events=body.events,
+            game_time_sec=body.game_time_sec,
+            source=body.source,
+            default_dir=default_dir,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to write events JSON: {exc}") from exc
+
+    # Remember export directory for the AutoSplit file picker.
+    export_dir = str(Path(result.path).parent)
+    if prefs.last_events_dir != export_dir:
+        prefs.last_events_dir = export_dir
+        save_ui_preferences(settings.data_dir, prefs)
+
+    return ExportEventsResponse.model_validate(result.model_dump())
 
 
 @app.get("/api/replays/inspect", response_model=RoflOverview)

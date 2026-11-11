@@ -4,6 +4,8 @@ import type {
   ChartBundle,
   CreateClipsResponse,
   DisplaySettings,
+  EventsExportResult,
+  EventsLiveStatus,
   FfmpegStatus,
   FsEntry,
   LocalReplayItem,
@@ -127,6 +129,24 @@ export function installFfmpeg(): Promise<{
 
 export function addFfmpegToPath(): Promise<FfmpegStatus> {
   return request("/api/tools/ffmpeg/add-to-path", { method: "POST" });
+}
+
+export function getLiveEvents(): Promise<EventsLiveStatus> {
+  return request("/api/events/live");
+}
+
+export function exportEvents(body: {
+  output_path?: string | null;
+  directory?: string | null;
+  filename?: string | null;
+  events?: Record<string, unknown>[] | null;
+  game_time_sec?: number | null;
+  source?: string;
+}): Promise<EventsExportResult> {
+  return request("/api/events/export", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function autoSplitClips(body: {
