@@ -9,6 +9,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from pentaklip import __version__
 from pentaklip.api.schemas import (
@@ -372,3 +374,34 @@ def api_aggregate_stats(body: AggregateStatsRequest) -> AggregatedReplayStats:
 def api_build_charts(body: ChartsRequest) -> ChartBundle:
     display = body.display or load_display_settings(settings.data_dir)
     return build_charts(body.aggregated, display)
+
+
+def _web_dist_dir() -> Path | None:
+    candidates = [
+        Path(__file__).resolve().parents[3] / "web" / "dist",
+        Path.cwd() / "web" / "dist",
+    ]
+    for path in candidates:
+        if (path / "index.html").is_file():
+            return path
+    return None
+
+
+_WEB_DIST = _web_dist_dir()
+if _WEB_DIST is not None:
+    assets_dir = _WEB_DIST / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="web-assets")
+
+    @app.get("/")
+    def spa_index() -> FileResponse:
+        return FileResponse(_WEB_DIST / "index.html")
+
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str) -> FileResponse:
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = _WEB_DIST / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_WEB_DIST / "index.html")
