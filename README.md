@@ -22,28 +22,90 @@ LoL リプレイからキル・集団戦などのハイライトを検出し、�
 - 上記タイプラベル付き PR は CI 成功後に自動で squash マージされる
 - 詳細は [`.github/LABELS.md`](.github/LABELS.md)
 
-## 開発セットアップ
-
+## 初回セットアップ
 
 ```powershell
+# Python API
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
+
+# WebUI
+cd web
+npm install
+cd ..
 ```
 
-API 起動:
+## 起動コマンド
+
+### 1. API サーバー（FastAPI / Python）
 
 ```powershell
+.\.venv\Scripts\Activate.ps1
 python -m pentaklip --reload
 ```
 
-ヘルスチェック: `http://127.0.0.1:8787/api/health`
+| 項目 | 値 |
+|------|-----|
+| URL | http://127.0.0.1:8787 |
+| ヘルスチェック | http://127.0.0.1:8787/api/health |
+| OpenAPI | http://127.0.0.1:8787/docs |
 
-テスト:
+ホスト / ポート変更例:
 
 ```powershell
-pytest
+python -m pentaklip --host 127.0.0.1 --port 8787 --reload
 ```
+
+### 2. WebUI（開発: Vite + React）
+
+API を起動した状態で、別ターミナルから:
+
+```powershell
+cd web
+npm run dev
+```
+
+| 項目 | 値 |
+|------|-----|
+| URL | http://127.0.0.1:5173 |
+| API プロキシ | `/api` → `http://127.0.0.1:8787` |
+
+### 3. API + WebUI（ビルド済み静的配信）
+
+Web をビルドすると、API と同じプロセスで UI も配信します。
+
+```powershell
+cd web
+npm run build
+cd ..
+.\.venv\Scripts\Activate.ps1
+python -m pentaklip
+```
+
+| 項目 | 値 |
+|------|-----|
+| UI | http://127.0.0.1:8787/ |
+| API | http://127.0.0.1:8787/api/... |
+
+### 4. テスト / チェック
+
+```powershell
+# Python
+.\.venv\Scripts\Activate.ps1
+pytest
+ruff check src tests
+
+# Web ビルド確認
+cd web
+npm run build
+```
+
+### 未実装（予定）
+
+| アプリ | 状態 |
+|--------|------|
+| Tauri デスクトップ殻 | 未実装（正式配布時。同じ React UI を包む想定） |
 
 ## パッケージ構成
 
