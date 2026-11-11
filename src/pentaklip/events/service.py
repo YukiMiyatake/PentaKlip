@@ -107,9 +107,9 @@ def fetch_live_events(
             None,
         )
     try:
-        # seek=0 requests history from the first event id.
+        # eventID=0 requests history from the first event id.
         # In replay, Live Client still only includes EventTime <= current game time.
-        event_payload = live.get_event_data(seek=0)
+        event_payload = live.get_event_data(event_id=0)
         events_by_key: dict[int | str, dict[str, Any]] = {}
 
         def _key(event: dict[str, Any]) -> int | str:

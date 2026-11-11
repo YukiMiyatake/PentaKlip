@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Self
 
 import pytest
 from fastapi.testclient import TestClient
@@ -38,8 +39,8 @@ class FakeLiveClient:
     def is_available(self) -> bool:
         return self.available
 
-    def get_event_data(self, *, seek: int | None = 0) -> dict:
-        _ = seek
+    def get_event_data(self, *, event_id: int | None = 0) -> dict:
+        _ = event_id
         return {"Events": SAMPLE_EVENTS}
 
     def get_all_game_data(self) -> dict:
@@ -170,3 +171,36 @@ def test_api_live_when_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.get("/api/events/live")
     assert response.status_code == 200
     assert response.json()["available"] is False
+
+
+def test_live_client_eventdata_uses_event_id_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pentaklip.record.live_client import LiveClientClient
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"Events": []}
+
+    class FakeHttpxClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _ = args, kwargs
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            _ = args
+
+        def get(self, path: str, params: dict | None = None) -> FakeResponse:
+            captured["path"] = path
+            captured["params"] = params
+            return FakeResponse()
+
+    monkeypatch.setattr("pentaklip.record.live_client.httpx.Client", FakeHttpxClient)
+    LiveClientClient().get_event_data(event_id=0)
+    assert captured["path"] == "/liveclientdata/eventdata"
+    assert captured["params"] == {"eventID": 0}
