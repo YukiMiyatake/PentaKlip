@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from pentaklip.detect.models import HighlightCandidate
+from pentaklip.replay.install import InstallMode
 from pentaklip.stats.display import DisplaySettings
 from pentaklip.stats.models import AggregatedReplayStats, ChartBundle, ReplayStatsBundle
 
@@ -19,6 +20,11 @@ class HealthResponse(BaseModel):
 class InstallReplayRequest(BaseModel):
     source_path: str = Field(description="Path to the downloaded .rofl file")
     local_replay_id: str = Field(description="Local replay id to overwrite / install as")
+    mode: InstallMode = InstallMode.COPY
+    replays_dir: str | None = Field(
+        default=None,
+        description="Override LoL Replays folder (defaults to settings)",
+    )
     dry_run: bool = False
 
 
@@ -29,6 +35,20 @@ class InstallReplayResponse(BaseModel):
     local_replay_id: str
     installed_path: str
     overwritten: bool
+    mode: InstallMode
+
+
+class LocalReplayItem(BaseModel):
+    path: str
+    filename: str
+    match_id: str | None
+    size_bytes: int
+
+
+class ParseMatchIdResponse(BaseModel):
+    path: str
+    match_id: str | None
+    stem: str
 
 
 class DetectRequest(BaseModel):
@@ -39,6 +59,45 @@ class DetectRequest(BaseModel):
 
 class DetectResponse(BaseModel):
     highlights: list[HighlightCandidate]
+
+
+class ManualClipSegment(BaseModel):
+    start_sec: float
+    end_sec: float
+    kind: str = "other"
+    label: str | None = None
+    game_time_sec: float | None = None
+
+
+class CreateClipsRequest(BaseModel):
+    source_video_path: str = Field(description="Full-match recording (mp4/mkv/etc.)")
+    output_dir: str | None = None
+    original_match_id: str | None = None
+    replay_db_id: int | None = None
+    padding_before_sec: float | None = None
+    padding_after_sec: float | None = None
+    events: list[dict] = Field(default_factory=list)
+    highlights: list[HighlightCandidate] = Field(default_factory=list)
+    segments: list[ManualClipSegment] = Field(default_factory=list)
+    dry_run: bool = False
+
+
+class CreatedClipItem(BaseModel):
+    kind: str
+    label: str | None
+    game_time_sec: float
+    start_sec: float
+    end_sec: float
+    output_path: str
+    highlight_db_id: int | None = None
+    export_db_id: int | None = None
+
+
+class CreateClipsResponse(BaseModel):
+    source_video: str
+    output_dir: str
+    clip_count: int
+    clips: list[CreatedClipItem]
 
 
 class StartStatsSessionRequest(BaseModel):
