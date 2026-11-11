@@ -4,6 +4,13 @@ node_modules/
 venv/
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+src/pentaklip.egg-info/
+.coverage
+htmlcov/
 
 # Env / secrets
 .env
