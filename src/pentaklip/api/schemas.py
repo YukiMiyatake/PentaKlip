@@ -188,6 +188,8 @@ class ExportEventsRequest(BaseModel):
     game_time_sec: float | None = None
     source: str = "liveclientdata"
     include_stats: bool = True
+    harvest: bool = True
+    harvest_speed: float = 16.0
 
 
 class ExportEventsResponse(BaseModel):

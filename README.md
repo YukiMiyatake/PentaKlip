@@ -94,8 +94,7 @@ python -m pentaklip
 |------|------|
 | 置き換え | LoL フォルダの置き換え先を固定し、コピー元 .rofl を選んで上書きコピー（元ゲーム ID を DB 保存） |
 | 自動切り分け | 録画動画 + イベント JSON からハイライト検出し ffmpeg で自動クリップ |
-| スタッツ | フォルダ内複数試合の平均集計・レーン別ロースター（Riot ID あいまい一致） |
-| ffmpeg | インストール（winget）・PATH 追加・簡易設定（GPU/CPUエンコーダ / 品質 / パス / webm自動変換） |
+| ffmpeg | インストール（winget）・PATH 追加・簡易設定（品質 / パス / webm自動変換） |
 | スタッツ / 表示設定 | 集計結果の表・グラフとレーン別表示設定 |
 
 ```powershell
@@ -124,9 +123,9 @@ npm run build
 1. WebUI「ffmpeg」タブで導入 / PATH 追加
 2. 「自動切り分け」タブで **出力ルート** を設定。ゲームIDは次の優先順で自動取得:
    - 置き換え時に保存した **元マッチID**（DB）
-   - ROFL メタの gameId（`JP1-612229453` 形式。数値のみなら `JP1-` を付与。`platformId` があればそれを使用）
-   - ROFL ファイル名の `REGION-digits`
-   - ROFL メタ指紋 `rofl-…`（最終手段）
+   - ROFL メタの gameId（あれば）
+   - ROFL メタ指紋 `rofl-…`（リネームしても不変）
+   - ファイル名（最終手段）
 3. リプレイを開いた状態で **試合を走査して取得** → JSON 保存
    （Replay API で先頭から高速再生し、Live Client イベントを蓄積。終端 Seek だけでは序盤が欠ける）
    → `game.cfg` の `[General]` に `EnableReplayApi=1` が必要

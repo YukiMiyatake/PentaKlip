@@ -42,9 +42,11 @@ class LiveClientClient:
             return response.json()
 
     def is_available(self) -> bool:
+        """True when Live Client responds (works in replay/spectator too)."""
         try:
             with self._client() as client:
-                response = client.get("/liveclientdata/activeplayername")
+                # gamestats works without an active player; activeplayername often 404s in spectator.
+                response = client.get("/liveclientdata/gamestats")
                 return response.status_code == 200
         except httpx.HTTPError:
             return False

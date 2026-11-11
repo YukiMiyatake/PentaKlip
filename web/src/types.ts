@@ -136,6 +136,7 @@ export type EventsLiveStatus = {
   player_count?: number | null;
   source: string;
   error?: string | null;
+  warning?: string | null;
 };
 
 export type EventsExportResult = {

@@ -11,8 +11,7 @@ class ReplayApiClient:
     """
     Thin wrapper around https://127.0.0.1:2999/replay/...
 
-    Exact routes depend on client version and whether the Replay API is enabled
-    in the local game config. Methods here are stubs for the documented surface.
+    Requires ``EnableReplayApi=1`` under ``[General]`` in the game ``game.cfg``.
     """
 
     def __init__(self, base_url: str = "https://127.0.0.1:2999", timeout: float = 2.0) -> None:
@@ -46,5 +45,12 @@ class ReplayApiClient:
             response.raise_for_status()
             return response.json() if response.content else {}
 
-    def seek(self, time_sec: float) -> dict[str, Any]:
-        return self.set_playback({"time": time_sec})
+    def seek(self, time_sec: float, *, paused: bool = True) -> dict[str, Any]:
+        return self.set_playback({"time": float(time_sec), "paused": paused})
+
+    def is_available(self) -> bool:
+        try:
+            self.get_playback()
+            return True
+        except httpx.HTTPError:
+            return False
