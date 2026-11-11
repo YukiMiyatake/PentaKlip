@@ -15,11 +15,20 @@ def find_ffmpeg(explicit: Path | None = None) -> Path:
     if explicit is not None:
         return explicit
     found = shutil.which("ffmpeg")
-    if not found:
-        raise FileNotFoundError(
-            "ffmpeg not found on PATH. Install ffmpeg or bundle it next to the app."
-        )
-    return Path(found)
+    if found:
+        return Path(found)
+
+    # API process often starts before user PATH is refreshed; reuse Tools discovery.
+    from pentaklip.tools.ffmpeg_setup import get_ffmpeg_status
+
+    status = get_ffmpeg_status()
+    if status.found and status.path:
+        return Path(status.path)
+
+    raise FileNotFoundError(
+        "ffmpeg not found on PATH. Use the ffmpeg tab to install / Add to PATH, "
+        "then retry (or restart the API)."
+    )
 
 
 @dataclass(frozen=True)

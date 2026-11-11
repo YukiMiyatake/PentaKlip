@@ -1,7 +1,8 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from pentaklip.export.ffmpeg import ExportResult, ensure_mp4_source
+from pentaklip.export.ffmpeg import ExportResult, ensure_mp4_source, find_ffmpeg
+from pentaklip.tools.ffmpeg_setup import FfmpegStatus
 
 
 def test_ensure_mp4_source_passthrough_for_mp4(tmp_path: Path) -> None:
@@ -10,6 +11,19 @@ def test_ensure_mp4_source_passthrough_for_mp4(tmp_path: Path) -> None:
     path, result = ensure_mp4_source(video)
     assert path == video.resolve()
     assert result is None
+
+
+def test_find_ffmpeg_falls_back_to_discovered_path(tmp_path: Path) -> None:
+    fake = tmp_path / "ffmpeg.exe"
+    fake.write_bytes(b"x")
+    with (
+        patch("pentaklip.export.ffmpeg.shutil.which", return_value=None),
+        patch(
+            "pentaklip.tools.ffmpeg_setup.get_ffmpeg_status",
+            return_value=FfmpegStatus(found=True, path=str(fake), on_path=False),
+        ),
+    ):
+        assert find_ffmpeg() == fake
 
 
 def test_ensure_mp4_source_converts_webm(tmp_path: Path) -> None:
