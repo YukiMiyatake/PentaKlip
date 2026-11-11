@@ -288,3 +288,133 @@ table.stats th {
   margin: 0 0 8px;
   font-size: 0.92rem;
 }
+
+.split-2 {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .split-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.select,
+.text-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.text-input.grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.text-input.narrow {
+  width: 88px;
+}
+
+.file-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 10px 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.file-item {
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.file-item:hover,
+.file-item.active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: rgba(183, 242, 85, 0.08);
+}
+
+.overview-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-top: 10px;
+}
+
+.overview-card.empty {
+  color: var(--muted);
+}
+
+.overview-card h4 {
+  margin: 0 0 8px;
+}
+
+.overview-card dl {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.overview-card dl > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.overview-card dt {
+  color: var(--muted);
+}
+
+.overview-card dd {
+  margin: 0;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.players {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.result-box ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 0.88rem;
+}
+
+.log-box {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #0b100e;
+  overflow: auto;
+  max-height: 240px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.panel h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}

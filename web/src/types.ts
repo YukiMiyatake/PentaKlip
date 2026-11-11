@@ -61,3 +61,64 @@ export type AggregatedReplayStats = {
   team_totals?: Record<string, Record<string, number>>;
   meta?: Record<string, unknown>;
 };
+
+export type RoflOverview = {
+  path: string;
+  filename: string;
+  match_id?: string | null;
+  format?: string | null;
+  game_version?: string | null;
+  game_length_ms?: number | null;
+  game_length_sec?: number | null;
+  game_mode?: string | null;
+  map_name?: string | null;
+  is_practice_tool?: boolean | null;
+  player_count?: number | null;
+  players: string[];
+  size_bytes: number;
+  note?: string | null;
+};
+
+export type UiPreferences = {
+  fixed_target_rofl: string | null;
+  last_source_dir: string | null;
+  last_video_dir: string | null;
+  last_events_dir: string | null;
+};
+
+export type FsEntry = {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size_bytes?: number | null;
+  suffix?: string | null;
+};
+
+export type LocalReplayItem = {
+  path: string;
+  filename: string;
+  match_id: string | null;
+  size_bytes: number;
+};
+
+export type FfmpegStatus = {
+  found: boolean;
+  path?: string | null;
+  version_line?: string | null;
+  on_path: boolean;
+  hints: string[];
+};
+
+export type CreateClipsResponse = {
+  source_video: string;
+  output_dir: string;
+  clip_count: number;
+  clips: Array<{
+    kind: string;
+    label?: string | null;
+    game_time_sec: number;
+    start_sec: number;
+    end_sec: number;
+    output_path: string;
+  }>;
+};

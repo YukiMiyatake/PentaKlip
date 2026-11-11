@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { getHealth } from "./api";
+import { AutoSplitPage } from "./pages/AutoSplitPage";
 import { DisplaySettingsPage } from "./pages/DisplaySettingsPage";
+import { ReplacePage } from "./pages/ReplacePage";
 import { StatsViewerPage } from "./pages/StatsViewerPage";
+import { ToolsPage } from "./pages/ToolsPage";
 
-type Tab = "viewer" | "settings";
+type Tab = "replace" | "autosplit" | "tools" | "viewer" | "settings";
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("viewer");
+  const [tab, setTab] = useState<Tab>("replace");
   const [health, setHealth] = useState<string>("checking…");
 
   useEffect(() => {
@@ -30,27 +33,36 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <h1>PentaKlip</h1>
-          <p>Replay stats viewer · per-lane display settings</p>
+          <p>リプレイ置き換え · 自動クリップ · スタッツ</p>
         </div>
         <div className={`health ${healthOk ? "ok" : ""}`}>{health}</div>
       </header>
 
       <nav className="tabs">
-        <button
-          className={`tab ${tab === "viewer" ? "active" : ""}`}
-          onClick={() => setTab("viewer")}
-        >
-          スタッツ表示
-        </button>
-        <button
-          className={`tab ${tab === "settings" ? "active" : ""}`}
-          onClick={() => setTab("settings")}
-        >
-          表示設定
-        </button>
+        {(
+          [
+            ["replace", "置き換え"],
+            ["autosplit", "自動切り分け"],
+            ["tools", "ffmpeg"],
+            ["viewer", "スタッツ"],
+            ["settings", "表示設定"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            className={`tab ${tab === id ? "active" : ""}`}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
       </nav>
 
-      {tab === "viewer" ? <StatsViewerPage /> : <DisplaySettingsPage />}
+      {tab === "replace" ? <ReplacePage /> : null}
+      {tab === "autosplit" ? <AutoSplitPage /> : null}
+      {tab === "tools" ? <ToolsPage /> : null}
+      {tab === "viewer" ? <StatsViewerPage /> : null}
+      {tab === "settings" ? <DisplaySettingsPage /> : null}
     </div>
   );
 }

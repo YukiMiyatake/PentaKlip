@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pentaklip import __version__
 from pentaklip.api.schemas import (
     AggregateStatsRequest,
+    AutoSplitRequest,
     ChartsRequest,
     CreateClipsRequest,
     CreateClipsResponse,
@@ -27,10 +28,12 @@ from pentaklip.api.schemas import (
     IngestStatsRequest,
     InstallReplayRequest,
     InstallReplayResponse,
+    ListDirRequest,
     LocalReplayItem,
     ParseMatchIdResponse,
     StartStatsSessionRequest,
     StartStatsSessionResponse,
+    UiPreferencesModel,
 )
 from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
@@ -39,6 +42,13 @@ from pentaklip.replay.install import (
     install_replay,
     list_local_replays,
     parse_match_id_from_filename,
+)
+from pentaklip.replay.metadata import RoflOverview, inspect_rofl
+from pentaklip.settings_store import (
+    UiPreferences,
+    list_directory,
+    load_ui_preferences,
+    save_ui_preferences,
 )
 from pentaklip.stats.aggregate import aggregate_replay
 from pentaklip.stats.catalog import (
@@ -60,6 +70,11 @@ from pentaklip.stats.export import export_replay_stats, load_replay_stats
 from pentaklip.stats.models import AggregatedReplayStats, ChartBundle
 from pentaklip.stats.sessions import create_session, get_session, pop_session
 from pentaklip.store.db import get_database
+from pentaklip.tools.ffmpeg_setup import (
+    add_discovered_ffmpeg_to_path,
+    get_ffmpeg_status,
+    install_ffmpeg_winget,
+)
 
 
 @asynccontextmanager
@@ -260,6 +275,93 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
 @app.get("/api/clips")
 def api_list_clips() -> list[dict]:
     return get_database().list_exports()
+
+
+@app.post("/api/clips/auto-split", response_model=CreateClipsResponse)
+def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
+    """Detect highlights from events (or events file) and cut clips automatically."""
+    events = list(body.events)
+    if body.events_path:
+        events_path = Path(body.events_path)
+        if not events_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Events file not found: {events_path}")
+        loaded = json.loads(events_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict) and "Events" in loaded:
+            loaded = loaded["Events"]
+        if isinstance(loaded, dict) and "events" in loaded:
+            loaded = loaded["events"]
+        if not isinstance(loaded, list):
+            raise HTTPException(status_code=400, detail="Events JSON must be a list or {Events:[...]}")
+        events.extend(e for e in loaded if isinstance(e, dict))
+
+    create_body = CreateClipsRequest(
+        source_video_path=body.source_video_path,
+        output_dir=body.output_dir,
+        original_match_id=body.original_match_id,
+        replay_db_id=body.replay_db_id,
+        padding_before_sec=body.padding_before_sec,
+        padding_after_sec=body.padding_after_sec,
+        events=events,
+        dry_run=body.dry_run,
+    )
+    return api_create_clips(create_body)
+
+
+@app.get("/api/replays/inspect", response_model=RoflOverview)
+def api_inspect_rofl(path: str) -> RoflOverview:
+    try:
+        return inspect_rofl(Path(path))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/ui/preferences", response_model=UiPreferencesModel)
+def api_get_ui_preferences() -> UiPreferencesModel:
+    prefs = load_ui_preferences(settings.data_dir)
+    return UiPreferencesModel.model_validate(prefs.model_dump())
+
+
+@app.put("/api/ui/preferences", response_model=UiPreferencesModel)
+def api_put_ui_preferences(body: UiPreferencesModel) -> UiPreferencesModel:
+    saved = save_ui_preferences(settings.data_dir, UiPreferences.model_validate(body.model_dump()))
+    return UiPreferencesModel.model_validate(saved.model_dump())
+
+
+@app.post("/api/fs/list")
+def api_fs_list(body: ListDirRequest) -> dict:
+    try:
+        entries = list_directory(Path(body.directory), suffixes=body.suffixes)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "directory": str(Path(body.directory).expanduser().resolve()),
+        "entries": [e.model_dump() for e in entries],
+    }
+
+
+@app.get("/api/tools/ffmpeg")
+def api_ffmpeg_status() -> dict:
+    return get_ffmpeg_status().model_dump()
+
+
+@app.post("/api/tools/ffmpeg/install")
+def api_ffmpeg_install() -> dict:
+    try:
+        result = install_ffmpeg_winget()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"ffmpeg install failed: {exc}") from exc
+    return result
+
+
+@app.post("/api/tools/ffmpeg/add-to-path")
+def api_ffmpeg_add_to_path() -> dict:
+    try:
+        status = add_discovered_ffmpeg_to_path()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return status.model_dump()
 
 
 @app.get("/api/stats/catalog")
