@@ -207,31 +207,15 @@ def export_events_json(
     resolved_game_id = sanitize_game_id(game_id) if game_id else None
 
     if resolved_events is None:
-        # Prefer an active accumulating capture session when present.
-        from pentaklip.events.sessions import get_active_events_session
-
-        active = get_active_events_session()
-        if active is not None and active.events:
-            # One more poll to catch the latest frame, then export accumulated.
-            status = active.poll()
-            if not status.available and not active.events:
-                raise RuntimeError(status.error or "Live Client unavailable")
-            resolved_events = list(active.events)
-            if resolved_time is None:
-                resolved_time = active.game_time_sec
-            if resolved_game_id is None and active.game_id:
-                resolved_game_id = sanitize_game_id(active.game_id)
-            resolved_source = "liveclientdata+accumulated"
-        else:
-            status = fetch_live_events(client)
-            if not status.available:
-                raise RuntimeError(status.error or "Live Client unavailable")
-            resolved_events = status.events
-            if resolved_time is None:
-                resolved_time = status.game_time_sec
-            if resolved_game_id is None and status.game_id:
-                resolved_game_id = sanitize_game_id(status.game_id)
-            resolved_source = status.source
+        status = fetch_live_events(client)
+        if not status.available:
+            raise RuntimeError(status.error or "Live Client unavailable")
+        resolved_events = status.events
+        if resolved_time is None:
+            resolved_time = status.game_time_sec
+        if resolved_game_id is None and status.game_id:
+            resolved_game_id = sanitize_game_id(status.game_id)
+        resolved_source = status.source
 
     if resolved_game_id is None and output_path is None:
         raise ValueError("game_id is required to create a game folder (or pass output_path)")

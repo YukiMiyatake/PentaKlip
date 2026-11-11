@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   autoSplitClips,
   exportEvents,
@@ -7,8 +7,6 @@ import {
   inspectRofl,
   listDir,
   putUiPreferences,
-  startEventsCapture,
-  stopEventsCapture,
 } from "../api";
 import type {
   CreateClipsResponse,
@@ -42,13 +40,9 @@ export function AutoSplitPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [live, setLive] = useState<EventsLiveStatus | null>(null);
-  const [watching, setWatching] = useState(false);
-  const [captureId, setCaptureId] = useState<string | null>(null);
-  const [captureCount, setCaptureCount] = useState(0);
   const [exportFilename, setExportFilename] = useState("events.json");
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [gameIdSource, setGameIdSource] = useState<string | null>(null);
-  const watchRef = useRef<number | null>(null);
 
   async function fillGameIdFromRofl(roflPath: string | null | undefined, fallbackId?: string | null) {
     if (fallbackId) {
@@ -99,34 +93,6 @@ export function AutoSplitPage() {
       .catch((err) => setError(String(err)));
   }, []);
 
-  useEffect(() => {
-    if (!watching) {
-      if (watchRef.current != null) {
-        window.clearInterval(watchRef.current);
-        watchRef.current = null;
-      }
-      return;
-    }
-    const tick = () => {
-      getLiveEvents()
-        .then((status) => {
-          setLive(status);
-          if (!gameId && status.game_id) setGameId(status.game_id);
-          const cap = status.capture as { event_count?: number } | undefined;
-          if (typeof cap?.event_count === "number") setCaptureCount(cap.event_count);
-        })
-        .catch((err) => setError(String(err)));
-    };
-    tick();
-    watchRef.current = window.setInterval(tick, 2000);
-    return () => {
-      if (watchRef.current != null) {
-        window.clearInterval(watchRef.current);
-        watchRef.current = null;
-      }
-    };
-  }, [watching, gameId]);
-
   async function persist(next: UiPreferences) {
     setPrefs(await putUiPreferences(next));
   }
@@ -171,49 +137,8 @@ export function AutoSplitPage() {
       const status = await getLiveEvents();
       setLive(status);
       if (!gameId && status.game_id) setGameId(status.game_id);
-      const cap = status.capture as { event_count?: number } | undefined;
-      if (typeof cap?.event_count === "number") setCaptureCount(cap.event_count);
     } catch (err) {
       setError(String(err));
-    }
-  }
-
-  async function startCapture() {
-    setBusy(true);
-    setError(null);
-    try {
-      const started = await startEventsCapture();
-      setCaptureId(started.session_id);
-      setCaptureCount(started.capture.event_count as number);
-      setLive(started.status);
-      setWatching(true);
-      setExportNote(
-        "蓄積キャプチャ開始。リプレイを最初から（または序盤から）再生し、終了後に JSON を保存してください。",
-      );
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function stopCapture() {
-    if (!captureId) {
-      setWatching(false);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const stopped = await stopEventsCapture(captureId);
-      setCaptureCount(stopped.event_count);
-      setCaptureId(null);
-      setWatching(false);
-      setExportNote(`蓄積停止。累計 ${stopped.event_count} イベント（保存前にもう一度取得されます）`);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -351,36 +276,13 @@ export function AutoSplitPage() {
       <div className="result-box" style={{ marginBottom: 16 }}>
         <h3>イベント JSON 作成</h3>
         <p className="hint">
-          Live Client は <strong>現在の試合時間までに発生したイベントだけ</strong>を返します。
-          終盤だけ見ると序盤のキルが入らないので、
-          <strong>蓄積キャプチャを序盤から開始</strong>→最後まで再生→JSON保存、が安全です。
-          JSON は生イベントのまま保存し、戦闘の統合は切り分け時に行います。
+          リプレイを終端まで Seek してから「今すぐ取得」→「JSON を保存」。
+          Live Client は現在の試合時間までのイベントを返します。JSON は生データのまま、戦闘統合は切り分け時です。
         </p>
         <p className="mono">{liveLabel}</p>
-        {captureId ? (
-          <p className="success">
-            蓄積中 session={captureId.slice(0, 8)}… · 累計 {captureCount} イベント
-          </p>
-        ) : null}
         <div className="row">
           <button className="btn" disabled={busy} onClick={() => refreshLive()}>
             今すぐ取得
-          </button>
-          {!captureId ? (
-            <button className="btn primary" disabled={busy} onClick={() => startCapture()}>
-              蓄積キャプチャ開始
-            </button>
-          ) : (
-            <button className="btn" disabled={busy} onClick={() => stopCapture()}>
-              蓄積停止
-            </button>
-          )}
-          <button
-            className={`btn ${watching ? "primary" : ""}`}
-            disabled={busy}
-            onClick={() => setWatching((v) => !v)}
-          >
-            {watching ? "監視停止" : "2秒ごとに監視"}
           </button>
           <input
             className="text-input"
