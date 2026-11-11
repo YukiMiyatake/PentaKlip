@@ -4,6 +4,7 @@ import {
   exportEvents,
   getLiveEvents,
   getUiPreferences,
+  inspectRofl,
   listDir,
   putUiPreferences,
 } from "../api";
@@ -41,15 +42,44 @@ export function AutoSplitPage() {
   const [watching, setWatching] = useState(false);
   const [exportFilename, setExportFilename] = useState("events.json");
   const [exportNote, setExportNote] = useState<string | null>(null);
+  const [gameIdSource, setGameIdSource] = useState<string | null>(null);
   const watchRef = useRef<number | null>(null);
+
+  async function fillGameIdFromRofl(roflPath: string | null | undefined, fallbackId?: string | null) {
+    if (fallbackId) {
+      setGameId(fallbackId);
+      setGameIdSource("prefs/db original");
+    }
+    if (!roflPath) return;
+    try {
+      const overview = await inspectRofl(roflPath);
+      // Prefer DB/prefs original id when present; otherwise ROFL meta/fingerprint.
+      if (!fallbackId && overview.match_id) {
+        setGameId(overview.match_id);
+        setGameIdSource(overview.match_id_source ?? "rofl");
+      } else if (fallbackId) {
+        // keep fallback, but show that ROFL meta is available
+        if (overview.match_id_source && overview.match_id_source !== "filename") {
+          setGameIdSource(`prefs/db original (rofl ${overview.match_id_source}: ${overview.match_id})`);
+        }
+      }
+    } catch {
+      if (!fallbackId) {
+        const inferred = inferGameIdFromName(roflPath);
+        if (inferred) {
+          setGameId(inferred);
+          setGameIdSource("filename");
+        }
+      }
+    }
+  }
 
   useEffect(() => {
     getUiPreferences()
       .then(async (p) => {
         setPrefs(p);
         if (p.last_output_root) setOutputRoot(p.last_output_root);
-        if (p.last_game_id) setGameId(p.last_game_id);
-        else if (p.fixed_target_rofl) setGameId(inferGameIdFromName(p.fixed_target_rofl));
+        await fillGameIdFromRofl(p.fixed_target_rofl, p.last_game_id);
         if (p.last_video_dir) {
           setVideoDir(p.last_video_dir);
           const listed = await listDir(p.last_video_dir, [".mp4", ".mkv", ".mov", ".avi"]);
@@ -241,13 +271,30 @@ export function AutoSplitPage() {
           />
           <input
             className="text-input"
-            style={{ width: 220 }}
-            placeholder="ゲームID（JP1-123...）"
+            style={{ width: 260 }}
+            placeholder="ゲームID（ROFL meta / 元マッチID）"
             value={gameId}
-            onChange={(e) => setGameId(e.target.value)}
+            onChange={(e) => {
+              setGameId(e.target.value);
+              setGameIdSource("manual");
+            }}
           />
+          <button
+            className="btn"
+            disabled={busy || !prefs?.fixed_target_rofl}
+            onClick={() =>
+              fillGameIdFromRofl(prefs?.fixed_target_rofl, null).catch((e) => setError(String(e)))
+            }
+          >
+            固定ROFLから取得
+          </button>
         </div>
         <p className="mono hint">保存先プレビュー: {previewDir}</p>
+        {gameIdSource ? <p className="hint">ゲームID出典: {gameIdSource}</p> : null}
+        <p className="hint">
+          置き換え後も安定するよう、ROFL メタ（無い場合は指紋）や DB の元マッチIDを優先します。
+          フォルダ名が衝突すると <span className="mono">ID-1</span> のように連番します。
+        </p>
       </div>
 
       <div className="result-box" style={{ marginBottom: 16 }}>

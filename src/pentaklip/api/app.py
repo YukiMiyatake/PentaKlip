@@ -41,7 +41,8 @@ from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
 from pentaklip.detect.service import detect_from_events
 from pentaklip.events.service import export_events_json, fetch_live_events
-from pentaklip.paths import infer_game_id, resolve_game_dir
+from pentaklip.game_id import game_id_from_rofl_path
+from pentaklip.paths import allocate_game_dir, infer_game_id
 from pentaklip.replay.install import (
     install_replay,
     list_local_replays,
@@ -134,6 +135,10 @@ def api_install_replay(body: InstallReplayRequest) -> InstallReplayResponse:
             local_replay_id=result.local_replay_id,
             installed_path=str(result.installed_path),
         )
+        prefs = load_ui_preferences(settings.data_dir)
+        prefs.last_game_id = result.original_match_id
+        prefs.fixed_target_rofl = str(result.installed_path)
+        save_ui_preferences(settings.data_dir, prefs)
 
     return InstallReplayResponse(
         replay_db_id=replay_db_id,
@@ -209,10 +214,12 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
     )
 
     prefs = load_ui_preferences(settings.data_dir)
+    db = get_database()
+    rofl_id, _rofl_src = game_id_from_rofl_path(prefs.fixed_target_rofl, db=db)
     game_id = infer_game_id(
         body.original_match_id,
+        rofl_id,
         body.source_video_path,
-        prefs.fixed_target_rofl,
         prefs.last_game_id,
     )
 
@@ -221,7 +228,7 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
     else:
         root = Path(prefs.last_output_root) if prefs.last_output_root else settings.resolved_clips_dir()
         if game_id:
-            output_dir = resolve_game_dir(root, game_id)
+            output_dir = allocate_game_dir(root, game_id)
         else:
             output_dir = root
 
@@ -267,7 +274,6 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
             save_ui_preferences(settings.data_dir, prefs)
 
     clip_items: list[CreatedClipItem] = []
-    db = get_database()
     for clip in result.clips:
         highlight_db_id: int | None = None
         export_db_id: int | None = None
@@ -335,23 +341,30 @@ def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
         events.extend(e for e in loaded if isinstance(e, dict))
 
     prefs = load_ui_preferences(settings.data_dir)
+    db = get_database()
+    rofl_id, _ = game_id_from_rofl_path(prefs.fixed_target_rofl, db=db)
     game_id = infer_game_id(
         body.original_match_id,
         events_meta.get("game_id"),
+        rofl_id,
         events_path.parent if events_path else None,
         body.source_video_path,
-        prefs.fixed_target_rofl,
         prefs.last_game_id,
     )
 
     output_dir = body.output_dir
     if output_dir is None and game_id:
         root = Path(prefs.last_output_root) if prefs.last_output_root else settings.resolved_clips_dir()
-        # Prefer same folder as the events file when it already lives under the game id.
-        if events_path is not None and infer_game_id(events_path.parent) == game_id:
+        # Prefer same folder as the events file when it already lives under this game.
+        parent_name = events_path.parent.name if events_path else ""
+        if events_path is not None and (
+            parent_name == game_id
+            or parent_name.startswith(f"{game_id}-")
+            or events_meta.get("game_id") == game_id
+        ):
             output_dir = str(events_path.parent)
         else:
-            output_dir = str(resolve_game_dir(root, game_id))
+            output_dir = str(allocate_game_dir(root, game_id))
 
     create_body = CreateClipsRequest(
         source_video_path=body.source_video_path,
@@ -380,10 +393,12 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
         if prefs.last_output_root
         else (Path(prefs.last_events_dir).parent if prefs.last_events_dir else settings.data_dir / "matches")
     )
+    db = get_database()
+    rofl_id, _ = game_id_from_rofl_path(prefs.fixed_target_rofl, db=db)
     game_id = infer_game_id(
         body.game_id,
         prefs.last_game_id,
-        prefs.fixed_target_rofl,
+        rofl_id,
     )
     try:
         if game_id is None and body.output_path is None:
@@ -393,7 +408,7 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
         if game_id is None and body.output_path is None:
             raise HTTPException(
                 status_code=400,
-                detail="game_id is required (e.g. JP1-1234567890) to create an output folder",
+                detail="game_id is required (ROFL meta/fingerprint, DB original id, or manual JP1-...)",
             )
         result = export_events_json(
             output_path=body.output_path,
