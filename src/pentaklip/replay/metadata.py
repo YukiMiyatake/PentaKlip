@@ -244,7 +244,7 @@ def _overview_from_meta(path: Path, meta: dict[str, Any], fmt: str) -> RoflOverv
         match_id_source = "meta_fingerprint"
         note = (
             "ROFL metadata has no gameId; using rename-stable fingerprint "
-            f"(no REGION-digits filename either)"
+            "(no REGION-digits filename either)"
         )
     else:
         match_id = None
