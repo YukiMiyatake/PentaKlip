@@ -595,3 +595,95 @@ table.stats th {
   margin: 0 0 8px;
   font-size: 1rem;
 }
+
+.radar-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 960px) {
+  .radar-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.radar-card {
+  min-height: 0;
+}
+
+.radar-legend-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.radar-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.radar-swatch.fill {
+  background: rgba(183, 242, 85, 0.45);
+  border: 1px solid #b7f255;
+}
+
+.radar-swatch.dash {
+  background: transparent;
+  border: 1px dashed #7ec8ff;
+}
+
+/* OBS Browser Source overlay */
+html.obs-overlay,
+body.obs-overlay,
+body.obs-overlay #root {
+  min-height: 0;
+  background: transparent !important;
+}
+
+.obs-root {
+  min-height: 100vh;
+  padding: 8px;
+  background: transparent;
+}
+
+.obs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(12, 16, 14, 0.55);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.obs-radar-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.obs-root .radar-card {
+  background: rgba(12, 16, 14, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.obs-root .radar-card.compact {
+  min-height: 0;
+  padding: 10px;
+}
+
+.obs-error,
+.obs-hint {
+  margin: 8px 0;
+}

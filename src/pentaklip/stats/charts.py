@@ -20,6 +20,14 @@ _COMPARE_SKIP = {
     StatKey.IS_DEAD,
 }
 
+# Lower value is better on radar (inverted when normalizing).
+_RADAR_LOWER_BETTER = {
+    StatKey.DEATHS,
+}
+
+# Cap axes so radar stays readable (pentagon / hexagon-ish).
+_RADAR_MAX_AXES = 6
+
 _POSITION_ORDER = [
     Position.TOP,
     Position.JUNGLE,
@@ -125,6 +133,133 @@ def _lane_compare_chart(
     )
 
 
+def _radar_axis_keys(columns: list[StatKey]) -> list[StatKey]:
+    keys = [k for k in columns if k not in _COMPARE_SKIP and k not in SERIES_STAT_KEYS]
+    return keys[:_RADAR_MAX_AXES]
+
+
+def _mean_scalar(players: list[PlayerPositionAggregate], key: StatKey) -> float | None:
+    vals = [_as_number(p.scalars.get(key.value)) for p in players]
+    present = [v for v in vals if v is not None]
+    if not present:
+        return None
+    return sum(present) / len(present)
+
+
+def _baseline_for_radar(
+    focus: PlayerPositionAggregate,
+    players: list[PlayerPositionAggregate],
+    axes: list[StatKey],
+) -> tuple[str, dict[str, float | None]]:
+    """Pick opposite-lane opponent (preferred) or lane average as dashed baseline."""
+    others = [p for p in players if p.player_id != focus.player_id]
+    if not others:
+        return "baseline", {k.value: None for k in axes}
+
+    opposite = [
+        p
+        for p in others
+        if focus.team and p.team and str(p.team) != str(focus.team)
+    ]
+    if len(opposite) == 1:
+        opp = opposite[0]
+        return (
+            f"vs {opp.player_id}",
+            {k.value: _as_number(opp.scalars.get(k.value)) for k in axes},
+        )
+
+    pool = opposite or others
+    label = "敵レーン平均" if opposite else "レーン平均"
+    return label, {k.value: _mean_scalar(pool, k) for k in axes}  # type: ignore[arg-type]
+
+
+def _normalize_radar_value(
+    value: float | None,
+    peak: float,
+    *,
+    lower_is_better: bool,
+) -> float | None:
+    if value is None or peak <= 0:
+        return None
+    ratio = max(0.0, min(1.0, abs(value) / peak))
+    return (1.0 - ratio) if lower_is_better else ratio
+
+
+def _radar_charts_for_position(
+    position: Position,
+    players: list[PlayerPositionAggregate],
+    columns: list[StatKey],
+) -> list[ChartSpec]:
+    """
+    LCK-style radar (pentagon/hexagon): filled polygon = player, dashed = opponent/avg.
+
+    Each row is one axis with raw + normalized values for Recharts RadarChart.
+    """
+    axes = _radar_axis_keys(columns)
+    if len(axes) < 3 or not players:
+        return []
+
+    charts: list[ChartSpec] = []
+    for focus in sorted(players, key=lambda p: p.player_id.casefold()):
+        baseline_label, baseline_vals = _baseline_for_radar(focus, players, axes)
+        rows: list[dict[str, Any]] = []
+        for key in axes:
+            player_v = _as_number(focus.scalars.get(key.value))
+            baseline_v = baseline_vals.get(key.value)
+            present = [v for v in (player_v, baseline_v) if v is not None]
+            if not present:
+                continue
+            peak = max(abs(v) for v in present)
+            if peak <= 0:
+                peak = 1.0
+            lower = key in _RADAR_LOWER_BETTER
+            rows.append(
+                {
+                    "stat_key": key.value,
+                    "axis": STAT_LABELS.get(key, key.value),
+                    "player": player_v,
+                    "baseline": baseline_v,
+                    "player_norm": _normalize_radar_value(
+                        player_v, peak, lower_is_better=lower
+                    ),
+                    "baseline_norm": _normalize_radar_value(
+                        baseline_v, peak, lower_is_better=lower
+                    ),
+                    "max": peak,
+                    "lower_is_better": lower,
+                }
+            )
+        if len(rows) < 3:
+            continue
+        charts.append(
+            ChartSpec(
+                chart_id=f"radar-{position.value}-{focus.player_id}",
+                chart_type="radar",
+                title=f"{position.value} · {focus.player_id}",
+                position=position,
+                series=[
+                    ChartSeries(
+                        key="player",
+                        label=focus.player_id,
+                        player_id=focus.player_id,
+                        position=position,
+                        value=focus.team,
+                    ),
+                    ChartSeries(
+                        key="baseline",
+                        label=baseline_label,
+                        player_id=baseline_label,
+                        position=position,
+                        value="dashed",
+                    ),
+                ],
+                columns=["axis", "player", "baseline"],
+                rows=rows,
+            )
+        )
+    return charts
+
+
 def _line_charts_for_player(
     player: PlayerPositionAggregate,
     series_keys: list[StatKey],
@@ -165,7 +300,7 @@ def build_charts(
     Convert aggregates into UI-ready chart/table specs.
 
     Does not recompute stats; only filters/shapes using display settings.
-    Emits LCK-style lane comparison bars from table keys, plus optional lines.
+    Emits LCK-style lane comparison bars, radar polygons, plus optional lines.
     """
     settings = display or default_display_settings()
     charts: list[ChartSpec] = []
@@ -184,6 +319,7 @@ def build_charts(
         applied[position.value] = [
             *[f"table:{k.value}" for k in table_keys],
             *[f"compare:{k.value}" for k in table_keys],
+            *[f"radar:{k.value}" for k in _radar_axis_keys(table_keys)],
             *[f"chart:{k.value}" for k in chart_keys],
         ]
         if table_keys:
@@ -191,6 +327,7 @@ def build_charts(
             compare = _lane_compare_chart(position, players, table_keys)
             if compare is not None:
                 charts.append(compare)
+            charts.extend(_radar_charts_for_position(position, players, table_keys))
         for player in players:
             charts.extend(_line_charts_for_player(player, chart_keys))
 

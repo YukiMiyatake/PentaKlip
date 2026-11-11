@@ -238,5 +238,16 @@ curl -X POST http://127.0.0.1:8787/api/clips/create `
 
 - `POST /api/stats/sessions` → ingest/poll → finalize（JSON/YAML 出力可）
 - `POST /api/stats/aggregate` … 集計のみ
-- `POST /api/stats/charts` … グラフ化のみ（集計結果 + レーン別表示設定）
+- `POST /api/stats/charts` … グラフ化のみ（集計結果 + レーン別表示設定）。`radar` / `lane_compare` / `table` / `line`
 - `GET/PUT /api/stats/display-settings` … レーンごとに表示するスタッツを設定
+
+### OBS オーバーレイ（Browser Source）
+
+1. API + WebUI を起動し、スタッツ JSON があるフォルダを用意
+2. OBS に **Browser Source** を追加し URL 例:
+   - `http://127.0.0.1:5173/obs?dir=D:\path\to\stats&position=MIDDLE&refresh=30`（開発）
+   - または一体配信時 `http://127.0.0.1:8787/obs?...`
+3. OBS 側で **Shutdown source when not visible** は任意。背景透過はページ側で有効
+4. クロマキーしたい場合は `&chroma=%2300FF00` を付与
+
+クエリ: `dir`（フォルダ）, `position`（TOP/JUNGLE/…）, `player`（部分一致）, `refresh`（秒）, `chroma`
