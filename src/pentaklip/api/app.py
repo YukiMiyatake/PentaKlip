@@ -40,7 +40,7 @@ from pentaklip.api.schemas import (
 )
 from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
-from pentaklip.detect.service import detect_from_events
+from pentaklip.detect.service import detect_from_events, summarize_event_coverage
 from pentaklip.events.service import export_events_json, fetch_live_events
 from pentaklip.game_id import game_id_from_rofl_path
 from pentaklip.paths import allocate_game_dir, infer_game_id
@@ -199,12 +199,18 @@ def api_detect(body: DetectRequest) -> DetectResponse:
         if body.padding_after_sec is not None
         else settings.clip_padding_after_sec
     )
+    gap = body.merge_gap_sec if body.merge_gap_sec is not None else settings.clip_merge_gap_sec
     highlights = detect_from_events(
         body.events,
         padding_before_sec=before,
         padding_after_sec=after,
+        merge_gap_sec=gap,
+        merge_fights=body.merge_fights,
     )
-    return DetectResponse(highlights=highlights)
+    return DetectResponse(
+        highlights=highlights,
+        event_coverage=summarize_event_coverage(body.events),
+    )
 
 
 @app.post("/api/clips/create", response_model=CreateClipsResponse)
@@ -219,6 +225,7 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
         if body.padding_after_sec is not None
         else settings.clip_padding_after_sec
     )
+    gap = body.merge_gap_sec if body.merge_gap_sec is not None else settings.clip_merge_gap_sec
 
     prefs = load_ui_preferences(settings.data_dir)
     db = get_database()
@@ -258,6 +265,8 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
             segments=manual or None,
             padding_before_sec=before,
             padding_after_sec=after,
+            merge_gap_sec=gap,
+            merge_fights=body.merge_fights,
             dry_run=body.dry_run,
             match_id=game_id or body.original_match_id,
         )
@@ -320,6 +329,7 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
             str(result.original_source_video) if result.original_source_video else None
         ),
         converted=result.converted,
+        event_coverage=summarize_event_coverage(body.events) if body.events else None,
     )
 
 
@@ -384,6 +394,8 @@ def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
         replay_db_id=body.replay_db_id,
         padding_before_sec=body.padding_before_sec,
         padding_after_sec=body.padding_after_sec,
+        merge_gap_sec=body.merge_gap_sec,
+        merge_fights=body.merge_fights,
         events=events,
         dry_run=body.dry_run,
     )

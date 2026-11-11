@@ -34,6 +34,7 @@ export function AutoSplitPage() {
   const [videoPath, setVideoPath] = useState("");
   const [eventsPath, setEventsPath] = useState("");
   const [padding, setPadding] = useState(10);
+  const [mergeGap, setMergeGap] = useState(25);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CreateClipsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -226,6 +227,8 @@ export function AutoSplitPage() {
         original_match_id: gameId.trim() || null,
         padding_before_sec: padding,
         padding_after_sec: padding,
+        merge_gap_sec: mergeGap,
+        merge_fights: true,
         dry_run: dryRun,
       });
       setResult(response);
@@ -392,6 +395,16 @@ export function AutoSplitPage() {
             onChange={(e) => setPadding(Number(e.target.value))}
           />
         </label>
+        <label>
+          戦闘マージ間隔（秒）{" "}
+          <input
+            className="text-input narrow"
+            type="number"
+            min={0}
+            value={mergeGap}
+            onChange={(e) => setMergeGap(Number(e.target.value))}
+          />
+        </label>
         <button className="btn" disabled={busy} onClick={() => run(true)}>
           ドライラン
         </button>
@@ -413,11 +426,26 @@ export function AutoSplitPage() {
               <li key={c.output_path}>
                 <span className="mono">
                   {c.kind} {c.start_sec.toFixed(0)}-{c.end_sec.toFixed(0)}s
+                  {c.label ? ` (${c.label})` : ""}
                 </span>{" "}
                 {c.output_path}
               </li>
             ))}
           </ul>
+          {result.event_coverage ? (
+            <div className="hint" style={{ marginTop: 8 }}>
+              <p>
+                イベント JSON: {result.event_coverage.total_events ?? 0} 件 / クリップ対象{" "}
+                {JSON.stringify(result.event_coverage.used_for_clips ?? {})}
+              </p>
+              {result.event_coverage.ignored &&
+              Object.keys(result.event_coverage.ignored).length > 0 ? (
+                <p>
+                  未使用（GameStart 等）: {JSON.stringify(result.event_coverage.ignored)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
