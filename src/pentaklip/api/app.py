@@ -35,6 +35,7 @@ from pentaklip.api.schemas import (
     ListDirRequest,
     LocalReplayItem,
     ParseMatchIdResponse,
+    PickDirectoryRequest,
     StartStatsSessionRequest,
     StartStatsSessionResponse,
     UiPreferencesModel,
@@ -56,6 +57,7 @@ from pentaklip.settings_store import (
     UiPreferences,
     list_directory,
     load_ui_preferences,
+    pick_directory,
     save_ui_preferences,
 )
 from pentaklip.stats.aggregate import aggregate_replay
@@ -529,6 +531,19 @@ def api_fs_list(body: ListDirRequest) -> dict:
     return {
         "directory": str(Path(body.directory).expanduser().resolve()),
         "entries": [e.model_dump() for e in entries],
+    }
+
+
+@app.post("/api/fs/pick-directory")
+def api_fs_pick_directory(body: PickDirectoryRequest) -> dict:
+    """Native OS folder dialog on the API host (local desktop use)."""
+    selected = pick_directory(
+        title=body.title or "フォルダを選択",
+        initial=body.initial,
+    )
+    return {
+        "path": selected,
+        "cancelled": selected is None,
     }
 
 

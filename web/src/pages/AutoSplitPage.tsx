@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   autoSplitClips,
   exportEvents,
@@ -7,6 +7,7 @@ import {
   getUiPreferences,
   inspectRofl,
   listDir,
+  pickDirectory,
   putUiPreferences,
 } from "../api";
 import type {
@@ -45,6 +46,9 @@ export function AutoSplitPage() {
   const [includeStats, setIncludeStats] = useState(true);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [gameIdSource, setGameIdSource] = useState<string | null>(null);
+  const [prefsSavedNote, setPrefsSavedNote] = useState<string | null>(null);
+  const rememberTimer = useRef<number | null>(null);
+  const folderStateRef = useRef({ outputRoot: "", videoDir: "", eventsDir: "", gameId: "" });
 
   async function fillGameIdFromRofl(roflPath: string | null | undefined, fallbackId?: string | null) {
     if (fallbackId) {
@@ -124,18 +128,75 @@ export function AutoSplitPage() {
     return persist(next);
   }
 
+  folderStateRef.current = { outputRoot, videoDir, eventsDir, gameId };
+
   async function rememberFoldersFromInputs() {
+    const snap = folderStateRef.current;
     const partial: Partial<UiPreferences> = {};
-    const root = outputRoot.trim();
-    const video = videoDir.trim();
-    const events = eventsDir.trim();
-    const gid = gameId.trim();
+    const root = snap.outputRoot.trim();
+    const video = snap.videoDir.trim();
+    const events = snap.eventsDir.trim();
+    const gid = snap.gameId.trim();
     if (root) partial.last_output_root = root;
     if (video) partial.last_video_dir = video;
     if (events) partial.last_events_dir = events;
     if (gid) partial.last_game_id = gid;
     if (Object.keys(partial).length === 0) return;
     await rememberPrefs(partial);
+    setPrefsSavedNote("フォルダ設定を保存しました");
+  }
+
+  function scheduleRememberFolders() {
+    if (rememberTimer.current != null) window.clearTimeout(rememberTimer.current);
+    rememberTimer.current = window.setTimeout(() => {
+      rememberFoldersFromInputs().catch((e) => setError(String(e)));
+    }, 400);
+  }
+
+  async function browseFolder(
+    kind: "output" | "video" | "events",
+  ) {
+    setError(null);
+    const initial =
+      kind === "output" ? outputRoot : kind === "video" ? videoDir : eventsDir;
+    const title =
+      kind === "output"
+        ? "出力ルートを選択"
+        : kind === "video"
+          ? "動画フォルダを選択"
+          : "イベント JSON フォルダを選択";
+    try {
+      const picked = await pickDirectory({ title, initial: initial || null });
+      if (picked.cancelled || !picked.path) return;
+      if (kind === "output") {
+        setOutputRoot(picked.path);
+        await rememberPrefs({ last_output_root: picked.path });
+        setPrefsSavedNote("出力ルートを保存しました");
+        return;
+      }
+      if (kind === "video") {
+        setVideoDir(picked.path);
+        const listed = await listDir(picked.path, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
+        setVideoDir(listed.directory);
+        setVideos(listed.entries.filter((e) => !e.is_dir));
+        await rememberPrefs({ last_video_dir: listed.directory });
+        setPrefsSavedNote("動画フォルダを保存しました");
+        return;
+      }
+      setEventsDir(picked.path);
+      const listed = await listDir(picked.path, [".json"]);
+      setEventsDir(listed.directory);
+      setEventFiles(listed.entries.filter((e) => !e.is_dir));
+      const inferred = inferGameIdFromName(listed.directory);
+      if (inferred && !gameId) setGameId(inferred);
+      await rememberPrefs({
+        last_events_dir: listed.directory,
+        last_game_id: inferred || gameId.trim() || null,
+      });
+      setPrefsSavedNote("イベントフォルダを保存しました");
+    } catch (err) {
+      setError(String(err));
+    }
   }
 
   async function loadVideos() {
@@ -194,6 +255,7 @@ export function AutoSplitPage() {
     setError(null);
     setExportNote(null);
     try {
+      await rememberFoldersFromInputs();
       const response = await exportEvents({
         directory: outputRoot || null,
         filename: exportFilename || "events.json",
@@ -302,17 +364,24 @@ export function AutoSplitPage() {
             className="text-input grow"
             placeholder="出力ルート（例: D:\\PentaKlip\\matches）"
             value={outputRoot}
-            onChange={(e) => setOutputRoot(e.target.value)}
+            onChange={(e) => {
+              setOutputRoot(e.target.value);
+              scheduleRememberFolders();
+            }}
             onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
           />
+          <button className="btn" disabled={busy} onClick={() => browseFolder("output")}>
+            参照…
+          </button>
           <input
             className="text-input"
-            style={{ width: 260 }}
+            style={{ width: 220 }}
             placeholder="ゲームID（ROFL meta / 元マッチID）"
             value={gameId}
             onChange={(e) => {
               setGameId(e.target.value);
               setGameIdSource("manual");
+              scheduleRememberFolders();
             }}
             onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
           />
@@ -327,6 +396,7 @@ export function AutoSplitPage() {
           </button>
         </div>
         <p className="mono hint">保存先プレビュー: {previewDir}</p>
+        {prefsSavedNote ? <p className="success">{prefsSavedNote}</p> : null}
         {gameIdSource ? <p className="hint">ゲームID出典: {gameIdSource}</p> : null}
         <p className="hint">
           ROFL の gameId（数だけなら <span className="mono">JP1-</span> を付与）やファイル名、DB
@@ -381,9 +451,15 @@ export function AutoSplitPage() {
             <input
               className="text-input grow"
               value={videoDir}
-              onChange={(e) => setVideoDir(e.target.value)}
+              onChange={(e) => {
+                setVideoDir(e.target.value);
+                scheduleRememberFolders();
+              }}
               onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
             />
+            <button className="btn" disabled={busy} onClick={() => browseFolder("video")}>
+              参照…
+            </button>
             <button className="btn" onClick={() => loadVideos().catch((e) => setError(String(e)))}>
               一覧
             </button>
@@ -406,9 +482,15 @@ export function AutoSplitPage() {
             <input
               className="text-input grow"
               value={eventsDir}
-              onChange={(e) => setEventsDir(e.target.value)}
+              onChange={(e) => {
+                setEventsDir(e.target.value);
+                scheduleRememberFolders();
+              }}
               onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
             />
+            <button className="btn" disabled={busy} onClick={() => browseFolder("events")}>
+              参照…
+            </button>
             <button className="btn" onClick={() => loadEvents().catch((e) => setError(String(e)))}>
               一覧
             </button>

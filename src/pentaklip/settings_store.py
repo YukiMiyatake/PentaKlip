@@ -75,3 +75,79 @@ def list_directory(
             )
         )
     return entries
+
+
+def pick_directory(*, title: str = "フォルダを選択", initial: str | None = None) -> str | None:
+    """
+    Open a native OS folder dialog on the machine running the API.
+
+    Returns the selected absolute path, or ``None`` if cancelled / unavailable.
+    Browser ``showDirectoryPicker`` cannot give a real path to Python, so local
+    tools use this server-side dialog instead.
+    """
+    initial_dir = None
+    if initial:
+        candidate = Path(initial).expanduser()
+        if candidate.is_dir():
+            initial_dir = str(candidate.resolve())
+        elif candidate.parent.is_dir():
+            initial_dir = str(candidate.parent.resolve())
+
+    # Prefer tkinter (stdlib) — works for local desktop API processes.
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        selected = filedialog.askdirectory(
+            title=title,
+            initialdir=initial_dir or str(Path.home()),
+            mustexist=True,
+        )
+        root.destroy()
+        if selected:
+            return str(Path(selected).resolve())
+        return None
+    except Exception:
+        logger.debug('tkinter folder picker unavailable', exc_info=True)
+
+    # Windows fallback: WinForms FolderBrowserDialog via PowerShell.
+    import platform
+    import subprocess
+
+    if platform.system() != "Windows":
+        return None
+    ps_initial = (initial_dir or "").replace("'", "''")
+    ps_title = title.replace("'", "''")
+    script = f"""
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = '{ps_title}'
+$dialog.ShowNewFolderButton = $true
+if ('{ps_initial}') {{ $dialog.SelectedPath = '{ps_initial}' }}
+$result = $dialog.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {{
+  Write-Output $dialog.SelectedPath
+}}
+"""
+    try:
+        completed = subprocess.run(
+            ["powershell", "-NoProfile", "-STA", "-Command", script],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return None
+    line = (completed.stdout or "").strip().splitlines()
+    if not line:
+        return None
+    path = Path(line[-1].strip())
+    return str(path.resolve()) if path.is_dir() else None
