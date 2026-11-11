@@ -82,13 +82,21 @@ export function AutoSplitPage() {
         await fillGameIdFromRofl(p.fixed_target_rofl, p.last_game_id);
         if (p.last_video_dir) {
           setVideoDir(p.last_video_dir);
-          const listed = await listDir(p.last_video_dir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
-          setVideos(listed.entries.filter((e) => !e.is_dir));
+          try {
+            const listed = await listDir(p.last_video_dir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
+            setVideos(listed.entries.filter((e) => !e.is_dir));
+          } catch {
+            // Keep remembered path even if the folder is temporarily missing.
+          }
         }
         if (p.last_events_dir) {
           setEventsDir(p.last_events_dir);
-          const listed = await listDir(p.last_events_dir, [".json"]);
-          setEventFiles(listed.entries.filter((e) => !e.is_dir));
+          try {
+            const listed = await listDir(p.last_events_dir, [".json"]);
+            setEventFiles(listed.entries.filter((e) => !e.is_dir));
+          } catch {
+            // Keep remembered path even if the folder is temporarily missing.
+          }
         }
       })
       .catch((err) => setError(String(err)));
@@ -98,11 +106,42 @@ export function AutoSplitPage() {
     setPrefs(await putUiPreferences(next));
   }
 
+  async function rememberPrefs(partial: Partial<UiPreferences>) {
+    const base = prefs ?? (await getUiPreferences());
+    const next: UiPreferences = { ...base, ...partial };
+    const unchanged =
+      next.fixed_target_rofl === base.fixed_target_rofl &&
+      next.last_source_dir === base.last_source_dir &&
+      next.last_video_dir === base.last_video_dir &&
+      next.last_events_dir === base.last_events_dir &&
+      next.last_output_root === base.last_output_root &&
+      next.last_game_id === base.last_game_id;
+    if (unchanged) {
+      setPrefs(base);
+      return base;
+    }
+    return persist(next);
+  }
+
+  async function rememberFoldersFromInputs() {
+    const partial: Partial<UiPreferences> = {};
+    const root = outputRoot.trim();
+    const video = videoDir.trim();
+    const events = eventsDir.trim();
+    const gid = gameId.trim();
+    if (root) partial.last_output_root = root;
+    if (video) partial.last_video_dir = video;
+    if (events) partial.last_events_dir = events;
+    if (gid) partial.last_game_id = gid;
+    if (Object.keys(partial).length === 0) return;
+    await rememberPrefs(partial);
+  }
+
   async function loadVideos() {
     const listed = await listDir(videoDir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
     setVideoDir(listed.directory);
     setVideos(listed.entries.filter((e) => !e.is_dir));
-    if (prefs) await persist({ ...prefs, last_video_dir: listed.directory });
+    await rememberPrefs({ last_video_dir: listed.directory });
   }
 
   async function loadEvents() {
@@ -111,13 +150,10 @@ export function AutoSplitPage() {
     setEventFiles(listed.entries.filter((e) => !e.is_dir));
     const inferred = inferGameIdFromName(listed.directory);
     if (inferred && !gameId) setGameId(inferred);
-    if (prefs) {
-      await persist({
-        ...prefs,
-        last_events_dir: listed.directory,
-        last_game_id: inferred || prefs.last_game_id,
-      });
-    }
+    await rememberPrefs({
+      last_events_dir: listed.directory,
+      last_game_id: inferred || gameId.trim() || null,
+    });
   }
 
   function selectVideo(path: string, name: string) {
@@ -177,14 +213,11 @@ export function AutoSplitPage() {
       setOutputRoot(response.game_dir.replace(/[/\\][^/\\]+$/, ""));
       const listed = await listDir(response.game_dir, [".json"]);
       setEventFiles(listed.entries.filter((e) => !e.is_dir));
-      if (prefs) {
-        await persist({
-          ...prefs,
-          last_events_dir: response.game_dir,
-          last_output_root: response.game_dir.replace(/[/\\][^/\\]+$/, ""),
-          last_game_id: response.game_id,
-        });
-      }
+      await rememberPrefs({
+        last_events_dir: response.game_dir,
+        last_output_root: response.game_dir.replace(/[/\\][^/\\]+$/, ""),
+        last_game_id: response.game_id,
+      });
       setLive(await getLiveEvents());
     } catch (err) {
       setError(String(err));
@@ -258,6 +291,7 @@ export function AutoSplitPage() {
             placeholder="出力ルート（例: D:\\PentaKlip\\matches）"
             value={outputRoot}
             onChange={(e) => setOutputRoot(e.target.value)}
+            onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
           />
           <input
             className="text-input"
@@ -268,6 +302,7 @@ export function AutoSplitPage() {
               setGameId(e.target.value);
               setGameIdSource("manual");
             }}
+            onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
           />
           <button
             className="btn"
@@ -329,6 +364,7 @@ export function AutoSplitPage() {
               className="text-input grow"
               value={videoDir}
               onChange={(e) => setVideoDir(e.target.value)}
+              onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
             />
             <button className="btn" onClick={() => loadVideos().catch((e) => setError(String(e)))}>
               一覧
@@ -353,6 +389,7 @@ export function AutoSplitPage() {
               className="text-input grow"
               value={eventsDir}
               onChange={(e) => setEventsDir(e.target.value)}
+              onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
             />
             <button className="btn" onClick={() => loadEvents().catch((e) => setError(String(e)))}>
               一覧
