@@ -1,0 +1,14 @@
+---
+description: タスクごとに feature ブランチを切り main へ PR する運用
+alwaysApply: true
+---
+
+# PR per task
+
+- 1 タスク = 1 feature ブランチ = 1 PR（main 向け）
+- `main` へ直接 commit / push しない
+- ブランチ名は `feature/<短い内容>`（例: `feature/replay-install-api`）
+- タスク完了時は必ず PR を作成し、URL を共有する
+- 無関係な変更を同じ PR に混ぜない。別タスクなら別ブランチ・別 PR
+- CI（GitHub Actions）が通ってからマージする前提で進める
+- ユーザーが明示しない限り `push --force` や main への直接マージ操作はしない（通常は PR マージ）
