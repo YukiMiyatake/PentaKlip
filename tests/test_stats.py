@@ -41,7 +41,11 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
     display = default_display_settings()
     charts = build_charts(aggregated, display)
     assert any(c.chart_type == "table" for c in charts.charts)
+    assert any(c.chart_type == "lane_compare" for c in charts.charts)
     assert any(c.chart_type == "line" for c in charts.charts)
+    mid_compare = next(c for c in charts.charts if c.chart_id == "lane-compare-MIDDLE")
+    assert mid_compare.rows
+    assert any(r.get("stat") == "Kills" for r in mid_compare.rows)
     assert "MIDDLE" in charts.display_settings_applied
 
 

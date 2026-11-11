@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
+import { LaneCompareChart } from "../components/LaneCompareChart";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
 import type { AggregatedReplayStats, ChartBundle } from "../types";
@@ -84,6 +85,8 @@ export function StatsViewerPage() {
     }
   }
 
+  const compares =
+    bundle?.charts.filter((c) => c.chart_type === "lane_compare") ?? [];
   const tables = bundle?.charts.filter((c) => c.chart_type === "table") ?? [];
   const lines = bundle?.charts.filter((c) => c.chart_type === "line") ?? [];
 
@@ -92,7 +95,7 @@ export function StatsViewerPage() {
       <h2>スタッツ表示</h2>
       <p className="hint">
         同じフォルダ内の <span className="mono">*_stats_aggregated.json</span>（なければ bundle）をすべて読み、
-        レーン登録名であいまい一致したうえで複数試合の平均を出します。単一 JSON の読み込みもできます。
+        レーン登録名であいまい一致したうえで複数試合の平均を出します。レーンごとに LCK 風のプレイヤー比較グラフを表示します。
       </p>
 
       <div className="result-box" style={{ marginBottom: 16 }}>
@@ -122,8 +125,18 @@ export function StatsViewerPage() {
       {meta ? <p className="success">{meta}</p> : null}
       {error ? <p className="error">{error}</p> : null}
 
+      {compares.length > 0 ? (
+        <div className="lane-compare-grid" style={{ marginTop: 20 }}>
+          <h3 className="section-title">レーン別プレイヤー比較</h3>
+          {compares.map((chart) => (
+            <LaneCompareChart key={chart.chart_id} chart={chart} />
+          ))}
+        </div>
+      ) : null}
+
       {tables.length > 0 ? (
         <div className="chart-grid" style={{ marginTop: 20 }}>
+          <h3 className="section-title">テーブル</h3>
           {tables.map((chart) => (
             <StatTable key={chart.chart_id} chart={chart} />
           ))}
@@ -132,6 +145,7 @@ export function StatsViewerPage() {
 
       {lines.length > 0 ? (
         <div className="chart-grid" style={{ marginTop: 16 }}>
+          <h3 className="section-title">時系列</h3>
           {lines.map((chart) => (
             <StatChart key={chart.chart_id} chart={chart} />
           ))}
