@@ -13,6 +13,8 @@ export type StatKeyInfo = {
 
 export type Catalog = {
   positions: Position[];
+  /** Display names (e.g. UTILITY → SUPPORT). */
+  position_labels?: Partial<Record<Position, string>>;
   table_stat_keys: StatKeyInfo[];
   series_stat_keys: StatKeyInfo[];
   all_stat_keys: StatKeyInfo[];

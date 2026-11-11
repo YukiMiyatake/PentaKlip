@@ -52,6 +52,11 @@ def default_display_settings() -> DisplaySettings:
         StatKey.DRAGON_KILLS,
         StatKey.BARON_KILLS,
         StatKey.HERALD_KILLS,
+        StatKey.CREEP_SCORE,
+        StatKey.CS_PER_MIN,
+        StatKey.TOWER_KILLS,
+        StatKey.INHIBITOR_KILLS,
+        StatKey.GOLD,
         StatKey.LEVEL,
     ]
     support_table = [
@@ -67,7 +72,13 @@ def default_display_settings() -> DisplaySettings:
         StatKey.LEVEL,
     ]
     shared_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES, StatKey.LEVEL_SERIES]
-    jg_charts = [StatKey.WARD_SERIES, StatKey.KDA_SERIES, StatKey.LEVEL_SERIES]
+    jg_charts = [
+        StatKey.WARD_SERIES,
+        StatKey.KDA_SERIES,
+        StatKey.CS_SERIES,
+        StatKey.GOLD_SERIES,
+        StatKey.LEVEL_SERIES,
+    ]
     support_charts = [StatKey.WARD_SERIES, StatKey.KDA_SERIES]
 
     table = {

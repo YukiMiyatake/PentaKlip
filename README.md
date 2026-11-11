@@ -239,7 +239,8 @@ curl -X POST http://127.0.0.1:8787/api/clips/create `
 - `POST /api/stats/sessions` → ingest/poll → finalize（JSON/YAML 出力可）
 - `POST /api/stats/aggregate` … 集計のみ
 - `POST /api/stats/charts` … グラフ化のみ（集計結果 + レーン別表示設定）。`radar` / `lane_compare` / `table` / `line`
-- `GET/PUT /api/stats/display-settings` … レーンごとに表示するスタッツを設定
+  - レーダーは各プレイヤー（塗り）とレーン平均（点線）。API 位置キー `UTILITY` の表示名は **SUPPORT**
+- `GET/PUT /api/stats/display-settings` … レーンごとに表示するスタッツを設定（ジャングルはオブジェクト・CS・ゴールド等を含むデフォルト）
 
 ### OBS オーバーレイ（Browser Source）
 

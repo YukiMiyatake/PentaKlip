@@ -51,7 +51,23 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
     assert len(mid_radar.rows) >= 3
     assert all("player_norm" in r and "baseline_norm" in r for r in mid_radar.rows)
     assert any(s.key == "baseline" for s in mid_radar.series)
+    # Never name a 1v1 opponent; always an average baseline.
+    baseline = next(s for s in mid_radar.series if s.key == "baseline")
+    assert baseline.label in {"レーン平均", "全体平均", "平均"}
+    assert not str(baseline.label).startswith("vs ")
+
+    jg_table = next(c for c in charts.charts if c.chart_id == "table-JUNGLE")
+    assert "Dragons" in jg_table.columns
+    assert "CS" in jg_table.columns
+    assert "CSPM" in jg_table.columns
+    assert "Gold" in jg_table.columns
+    jg_radar = next(c for c in charts.charts if c.chart_id.startswith("radar-JUNGLE-"))
+    assert len(jg_radar.rows) >= 6
+    assert any(c.title.startswith("SUPPORT") for c in charts.charts)
     assert "MIDDLE" in charts.display_settings_applied
+
+    catalog = TestClient(app).get("/api/stats/catalog").json()
+    assert catalog["position_labels"]["UTILITY"] == "SUPPORT"
 
 
 def test_display_settings_per_lane_filter() -> None:

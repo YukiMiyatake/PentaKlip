@@ -14,6 +14,21 @@ class Position(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+# API value stays UTILITY; UI / chart titles use SUPPORT.
+POSITION_LABELS: dict[Position, str] = {
+    Position.TOP: "TOP",
+    Position.JUNGLE: "JUNGLE",
+    Position.MIDDLE: "MIDDLE",
+    Position.BOTTOM: "BOTTOM",
+    Position.UTILITY: "SUPPORT",
+    Position.UNKNOWN: "UNKNOWN",
+}
+
+
+def position_label(position: Position) -> str:
+    return POSITION_LABELS.get(position, position.value)
+
+
 class StatKey(StrEnum):
     # Core scoreboard
     KILLS = "kills"
