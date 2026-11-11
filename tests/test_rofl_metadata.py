@@ -30,9 +30,9 @@ def test_inspect_classic_rofl(tmp_path: Path) -> None:
         )
     )
     overview = inspect_rofl(path)
-    # No REGION id in meta → rename-stable fingerprint (not filename).
-    assert overview.match_id_source == "meta_fingerprint"
-    assert overview.match_id and overview.match_id.startswith("rofl-")
+    # No gameId in meta → fall back to REGION-digits filename.
+    assert overview.match_id_source == "filename"
+    assert overview.match_id == "JP1-123456"
     assert overview.game_length_sec == 125.0
     assert overview.game_mode == "CLASSIC"
     assert overview.is_practice_tool is False
@@ -53,6 +53,44 @@ def test_inspect_prefers_explicit_meta_game_id(tmp_path: Path) -> None:
     )
     overview = inspect_rofl(path)
     assert overview.match_id == "KR-999888777"
+    assert overview.match_id_source == "meta"
+
+
+def test_inspect_numeric_game_id_gets_jp1_prefix(tmp_path: Path) -> None:
+    path = tmp_path / "renamed-local.rofl"
+    path.write_bytes(
+        _classic_rofl_bytes(
+            {
+                "gameLength": 125000,
+                "gameVersion": "14.1.1",
+                "gameMode": "CLASSIC",
+                "gameId": 612229453,
+                "statsJson": "[]",
+            }
+        )
+    )
+    overview = inspect_rofl(path)
+    assert overview.match_id == "JP1-612229453"
+    assert overview.match_id_source == "meta"
+    assert overview.note and "JP1-" in overview.note
+
+
+def test_inspect_numeric_game_id_uses_platform_id(tmp_path: Path) -> None:
+    path = tmp_path / "renamed-local.rofl"
+    path.write_bytes(
+        _classic_rofl_bytes(
+            {
+                "gameLength": 125000,
+                "gameVersion": "14.1.1",
+                "gameMode": "CLASSIC",
+                "gameId": "612229453",
+                "platformId": "KR",
+                "statsJson": "[]",
+            }
+        )
+    )
+    overview = inspect_rofl(path)
+    assert overview.match_id == "KR-612229453"
     assert overview.match_id_source == "meta"
 
 

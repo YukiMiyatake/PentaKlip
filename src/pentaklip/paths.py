@@ -10,6 +10,11 @@ from pentaklip.replay.install import parse_match_id_from_filename
 
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _MATCH_ID_RE = re.compile(r"(?P<id>[A-Za-z0-9]+-\d+)")
+_REGION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{1,4}$")
+
+# ROFL / Live Client often expose bare numeric game ids without a region.
+# Japan installs commonly use JP1-… filenames; default when region is unknown.
+DEFAULT_MATCH_REGION = "JP1"
 
 
 def sanitize_game_id(game_id: str) -> str:
@@ -36,6 +41,49 @@ def look_like_game_id(value: str | None) -> str | None:
         return None
 
 
+def normalize_region_code(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = str(value).strip().upper()
+    if not text or not _REGION_RE.fullmatch(text):
+        return None
+    # Reject pure digits masquerading as region.
+    if text.isdigit():
+        return None
+    return text
+
+
+def format_region_match_id(
+    value: str | int | None,
+    *,
+    region: str | None = None,
+    default_region: str = DEFAULT_MATCH_REGION,
+) -> str | None:
+    """
+    Normalize to ``REGION-digits`` (e.g. ``JP1-612229453``).
+
+    Bare numeric ids get ``default_region`` (JP1) when meta has no platform/region.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    existing = _MATCH_ID_RE.fullmatch(text) or _MATCH_ID_RE.search(text)
+    if existing:
+        return sanitize_game_id(existing.group("id"))
+    digits = text if text.isdigit() else None
+    if digits is None:
+        # Allow "JP1 612229453" / "game 612229453" loose forms.
+        m = re.search(r"(\d{6,})", text)
+        if m:
+            digits = m.group(1)
+    if not digits or len(digits) < 6:
+        return None
+    prefix = normalize_region_code(region) or default_region
+    return sanitize_game_id(f"{prefix}-{digits}")
+
+
 def extract_game_id_from_live_payload(data: dict) -> str | None:
     """Best-effort game id from Live Client allgamedata / event payloads."""
     candidates: list[object] = []
@@ -54,14 +102,12 @@ def extract_game_id_from_live_payload(data: dict) -> str | None:
     for raw in candidates:
         if raw is None:
             continue
+        formatted = format_region_match_id(raw)
+        if formatted:
+            return formatted
         found = look_like_game_id(str(raw))
         if found:
             return found
-        # Numeric-only Live Client ids: keep as-is after sanitize.
-        try:
-            return sanitize_game_id(str(raw))
-        except ValueError:
-            continue
     return None
 
 

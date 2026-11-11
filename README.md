@@ -123,14 +123,14 @@ npm run build
 1. WebUI「ffmpeg」タブで導入 / PATH 追加
 2. 「自動切り分け」タブで **出力ルート** を設定。ゲームIDは次の優先順で自動取得:
    - 置き換え時に保存した **元マッチID**（DB）
-   - ROFL メタの gameId（あれば）
-   - ROFL メタ指紋 `rofl-…`（リネームしても不変）
-   - ファイル名（最終手段）
-3. リプレイを終端まで Seek → **今すぐ取得** → JSON 保存
-   （Live Client は現在時刻までのイベントを返す）
+   - ROFL メタの gameId（`JP1-612229453` 形式。数値のみなら `JP1-` を付与。`platformId` があればそれを使用）
+   - ROFL ファイル名の `REGION-digits`
+   - ROFL メタ指紋 `rofl-…`（最終手段）
+3. リプレイを開いた状態で **試合を走査して取得** → JSON 保存
+   （Replay API で先頭から高速再生し、Live Client イベントを蓄積。終端 Seek だけでは序盤が欠ける）
+   → `game.cfg` の `[General]` に `EnableReplayApi=1` が必要
    → `{出力ルート}/{ゲームID}/events.json`（衝突時は `ID-1`）
    → 既定で同フォルダへ `stats_bundle.json` / `stats_aggregated.json` も保存
-     （終端時点の allgamedata 1 スナップショット。時系列チャート用の連続ポーリングではない）
    → JSON は生イベントのまま。戦闘統合は切り分け時
 4. 同じタブで動画と events JSON を選択し、ドライラン → 実行
    → クリップも同じゲームフォルダへ（同名ファイルは `clip-1.mp4`）
@@ -139,8 +139,9 @@ npm run build
 
 API:
 
-- `GET /api/events/live` … 現在の Live Client イベント（`player_count` 付き）
-- `POST /api/events/export` … イベント JSON 保存（`game_id` 必須。`include_stats` 既定 true でスタッツも同梱）
+- `GET /api/events/live` … 現在位置の Live Client イベント（スナップショット）
+- `POST /api/events/harvest` … リプレイ先頭から高速再生してイベント蓄積（`speed` 既定 16）
+- `POST /api/events/export` … イベント JSON 保存（`harvest` / `include_stats` 既定 true）
 - `POST /api/clips/auto-split` … 検出 + 切り出し（未指定時はゲームIDフォルダへ）
 
 ## パッケージ構成

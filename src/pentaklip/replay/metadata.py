@@ -9,7 +9,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from pentaklip.paths import look_like_game_id
+from pentaklip.paths import (
+    DEFAULT_MATCH_REGION,
+    format_region_match_id,
+    normalize_region_code,
+)
 from pentaklip.replay.install import parse_match_id_from_filename
 
 
@@ -88,13 +92,47 @@ def _parse_stats_list(meta: dict[str, Any]) -> list[dict[str, Any]]:
     return [s for s in loaded if isinstance(s, dict)]
 
 
+def _region_from_rofl_meta(
+    meta: dict[str, Any],
+    stats: list[dict[str, Any]] | None = None,
+) -> str:
+    """Best-effort platform/region code; falls back to JP1."""
+    rows = stats if stats is not None else _parse_stats_list(meta)
+    candidates: list[object] = [
+        meta.get("platformId"),
+        meta.get("platformID"),
+        meta.get("region"),
+        meta.get("gameServerRegion"),
+        meta.get("serverRegion"),
+    ]
+    for row in rows:
+        candidates.extend(
+            [
+                row.get("PLATFORM_ID"),
+                row.get("platformId"),
+                row.get("REGION"),
+                row.get("region"),
+            ]
+        )
+    for raw in candidates:
+        code = normalize_region_code(str(raw) if raw is not None else None)
+        if code:
+            return code
+    return DEFAULT_MATCH_REGION
+
+
 def extract_match_id_from_rofl_meta(meta: dict[str, Any]) -> tuple[str | None, str | None]:
     """
     Prefer an explicit match/game id from ROFL metadata.
 
-    Current Riot ROFL JSON usually has no REGION-123 id; in that case return a
-    rename-stable fingerprint derived from length/version/player ids.
+    Bare numeric ``gameId`` values are formatted as ``{region}-{id}``. Region is
+    taken from meta when present; otherwise defaults to ``JP1`` (filename-style).
+    If no game id exists, return ``(None, None)`` so callers can fall back to the
+    filename before using a fingerprint.
     """
+    stats = _parse_stats_list(meta)
+    region = _region_from_rofl_meta(meta, stats)
+
     candidates: list[object] = []
     for key in (
         "gameId",
@@ -107,7 +145,6 @@ def extract_match_id_from_rofl_meta(meta: dict[str, Any]) -> tuple[str | None, s
     ):
         candidates.append(meta.get(key))
 
-    stats = _parse_stats_list(meta)
     for row in stats:
         for key in ("GAME_ID", "MATCH_ID", "gameId", "matchId", "game_id", "match_id"):
             candidates.append(row.get(key))
@@ -115,18 +152,10 @@ def extract_match_id_from_rofl_meta(meta: dict[str, Any]) -> tuple[str | None, s
     for raw in candidates:
         if raw is None or raw == "":
             continue
-        text = str(raw).strip()
-        # Prefer REGION-digits form when present.
-        region_form = look_like_game_id(text)
-        if region_form and "-" in region_form:
-            return region_form, "meta"
-        # Keep bare numeric game ids from meta when clearly match-like (long).
-        if text.isdigit() and len(text) >= 6:
-            return text, "meta"
+        formatted = format_region_match_id(raw, region=region)
+        if formatted:
+            return formatted, "meta"
 
-    fingerprint = fingerprint_rofl_meta(meta, stats)
-    if fingerprint:
-        return fingerprint, "meta_fingerprint"
     return None, None
 
 
@@ -186,22 +215,40 @@ def _overview_from_meta(path: Path, meta: dict[str, Any], fmt: str) -> RoflOverv
 
     meta_id, meta_source = extract_match_id_from_rofl_meta(meta)
     filename_id = parse_match_id_from_filename(path)
+    fingerprint = fingerprint_rofl_meta(meta, stats)
+    note = None
+    match_id_source: Literal["meta", "meta_fingerprint", "filename"] | None
     if meta_id:
         match_id = meta_id
-        match_id_source: Literal["meta", "meta_fingerprint", "filename"] | None = (
-            "meta" if meta_source == "meta" else "meta_fingerprint"
+        match_id_source = "meta" if meta_source == "meta" else "meta_fingerprint"
+        bare = next(
+            (
+                str(v).strip()
+                for v in (
+                    meta.get("gameId"),
+                    meta.get("gameID"),
+                    meta.get("matchId"),
+                    meta.get("matchID"),
+                )
+                if v is not None and str(v).strip().isdigit()
+            ),
+            None,
         )
-        note = None
-        if match_id_source == "meta_fingerprint":
-            note = (
-                "ROFL metadata has no REGION-match id; using rename-stable fingerprint "
-                f"(filename had {filename_id})" if filename_id else
-                "ROFL metadata has no REGION-match id; using rename-stable fingerprint"
-            )
-    else:
+        if bare and match_id == format_region_match_id(bare):
+            note = f"ROFL gameId={bare} にリージョンが無いため {DEFAULT_MATCH_REGION}- を付与"
+    elif filename_id:
         match_id = filename_id
-        match_id_source = "filename" if filename_id else None
-        note = None
+        match_id_source = "filename"
+    elif fingerprint:
+        match_id = fingerprint
+        match_id_source = "meta_fingerprint"
+        note = (
+            "ROFL metadata has no gameId; using rename-stable fingerprint "
+            "(no REGION-digits filename either)"
+        )
+    else:
+        match_id = None
+        match_id_source = None
 
     return RoflOverview(
         path=str(path),

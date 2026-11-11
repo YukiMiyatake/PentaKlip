@@ -317,8 +317,9 @@ export function AutoSplitPage() {
         <p className="mono hint">保存先プレビュー: {previewDir}</p>
         {gameIdSource ? <p className="hint">ゲームID出典: {gameIdSource}</p> : null}
         <p className="hint">
-          置き換え後も安定するよう、ROFL メタ（無い場合は指紋）や DB の元マッチIDを優先します。
-          フォルダ名が衝突すると <span className="mono">ID-1</span> のように連番します。
+          ROFL の gameId（数だけなら <span className="mono">JP1-</span> を付与）やファイル名、DB
+          の元マッチIDから自動取得します。フォルダ名が衝突すると{" "}
+          <span className="mono">ID-1</span> のように連番します。
         </p>
       </div>
 
