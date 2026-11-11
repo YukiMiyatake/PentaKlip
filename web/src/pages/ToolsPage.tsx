@@ -7,12 +7,20 @@ import {
   putFfmpegSettings,
   resetFfmpegSettings,
 } from "../api";
-import type { FfmpegQuality, FfmpegSettings, FfmpegStatus } from "../types";
+import type { FfmpegEncoder, FfmpegQuality, FfmpegSettings, FfmpegStatus } from "../types";
 
 const QUALITY_OPTIONS: Array<{ value: FfmpegQuality; label: string; hint: string }> = [
   { value: "light", label: "軽い", hint: "速い・ファイル小" },
   { value: "standard", label: "標準", hint: "バランス（推奨）" },
   { value: "high", label: "きれい", hint: "遅い・高画質" },
+];
+
+const ENCODER_OPTIONS: Array<{ value: FfmpegEncoder; label: string; hint: string }> = [
+  { value: "auto", label: "自動（GPU優先）", hint: "NVENC → AMF → QSV → CPU" },
+  { value: "nvenc", label: "NVIDIA", hint: "h264_nvenc" },
+  { value: "amf", label: "AMD", hint: "h264_amf" },
+  { value: "qsv", label: "Intel", hint: "h264_qsv" },
+  { value: "cpu", label: "CPU", hint: "libx264" },
 ];
 
 export function ToolsPage() {
@@ -117,7 +125,7 @@ export function ToolsPage() {
       <h2>ffmpeg セットアップ</h2>
       <p className="hint">
         クリップ自動切り分けに ffmpeg が必要です。未導入なら winget で入れ、PATH
-        に追加できます。下の簡易設定で品質と実行パスを変えられます。
+        に追加できます。既定は GPU エンコード優先（失敗時は CPU にフォールバック）です。
       </p>
 
       <div className="overview-card">
@@ -189,6 +197,37 @@ export function ToolsPage() {
                 検出パスを入れる
               </button>
             </div>
+
+            <label className="hint" style={{ display: "block", marginTop: 12, marginBottom: 6 }}>
+              エンコーダ（GPU / CPU）
+            </label>
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              {ENCODER_OPTIONS.map((opt) => {
+                const listed = settings.available_encoders;
+                const unsupported =
+                  opt.value !== "auto" &&
+                  opt.value !== "cpu" &&
+                  Array.isArray(listed) &&
+                  !listed.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    className={`btn ${settings.encoder === opt.value ? "primary" : ""}`}
+                    disabled={busy}
+                    title={unsupported ? "この ffmpeg にエンコーダが見つかりません（選択は可・実行時フォールバック）" : opt.hint}
+                    onClick={() => setSettings({ ...settings, encoder: opt.value })}
+                  >
+                    {opt.label}
+                    <span className="hint"> · {opt.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {settings.effective_codec ? (
+              <p className="mono hint" style={{ marginTop: 6 }}>
+                現在の解決先: {settings.effective_encoder}（{settings.effective_codec}）
+              </p>
+            ) : null}
 
             <label className="hint" style={{ display: "block", marginTop: 12, marginBottom: 6 }}>
               変換・再エンコード品質

@@ -78,8 +78,11 @@ from pentaklip.stats.sessions import create_session, get_session, pop_session
 from pentaklip.store.db import get_database
 from pentaklip.tools.ffmpeg_settings import (
     FfmpegSettings,
+    available_encode_backends,
     default_ffmpeg_settings,
     load_ffmpeg_settings,
+    resolve_encode_backend,
+    resolved_ffmpeg_path,
     save_ffmpeg_settings,
 )
 from pentaklip.tools.ffmpeg_setup import (
@@ -533,15 +536,27 @@ def api_ffmpeg_add_to_path() -> dict:
     return status.model_dump()
 
 
-@app.get("/api/tools/ffmpeg/settings", response_model=FfmpegSettingsModel)
-def api_get_ffmpeg_settings() -> FfmpegSettingsModel:
-    return FfmpegSettingsModel.model_validate(
-        load_ffmpeg_settings(settings.data_dir).model_dump()
-    )
+def _ffmpeg_settings_payload(cfg: FfmpegSettings) -> dict:
+    ffmpeg = resolved_ffmpeg_path(cfg)
+    if ffmpeg is None:
+        status = get_ffmpeg_status()
+        ffmpeg = Path(status.path) if status.found and status.path else None
+    effective, codec = resolve_encode_backend(cfg.encoder, ffmpeg=ffmpeg)
+    return {
+        **cfg.model_dump(),
+        "available_encoders": available_encode_backends(ffmpeg),
+        "effective_encoder": effective,
+        "effective_codec": codec,
+    }
 
 
-@app.put("/api/tools/ffmpeg/settings", response_model=FfmpegSettingsModel)
-def api_put_ffmpeg_settings(body: FfmpegSettingsModel) -> FfmpegSettingsModel:
+@app.get("/api/tools/ffmpeg/settings")
+def api_get_ffmpeg_settings() -> dict:
+    return _ffmpeg_settings_payload(load_ffmpeg_settings(settings.data_dir))
+
+
+@app.put("/api/tools/ffmpeg/settings")
+def api_put_ffmpeg_settings(body: FfmpegSettingsModel) -> dict:
     if body.ffmpeg_path:
         path = Path(body.ffmpeg_path).expanduser()
         if not path.is_file():
@@ -550,13 +565,13 @@ def api_put_ffmpeg_settings(body: FfmpegSettingsModel) -> FfmpegSettingsModel:
         settings.data_dir,
         FfmpegSettings.model_validate(body.model_dump()),
     )
-    return FfmpegSettingsModel.model_validate(saved.model_dump())
+    return _ffmpeg_settings_payload(saved)
 
 
-@app.post("/api/tools/ffmpeg/settings/reset", response_model=FfmpegSettingsModel)
-def api_reset_ffmpeg_settings() -> FfmpegSettingsModel:
+@app.post("/api/tools/ffmpeg/settings/reset")
+def api_reset_ffmpeg_settings() -> dict:
     saved = save_ffmpeg_settings(settings.data_dir, default_ffmpeg_settings())
-    return FfmpegSettingsModel.model_validate(saved.model_dump())
+    return _ffmpeg_settings_payload(saved)
 
 
 @app.get("/api/stats/catalog")

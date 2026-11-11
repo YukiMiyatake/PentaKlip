@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from pentaklip.tools.ffmpeg_settings import (
+    EncodeBackend,
     EncodeQuality,
-    encode_args_for_quality,
+    FfmpegSettings,
+    encode_args_for_settings,
     load_ffmpeg_settings,
     resolved_ffmpeg_path,
 )
@@ -63,15 +66,36 @@ def _run_ffmpeg(command: list[str]) -> None:
         raise RuntimeError(f"ffmpeg failed: {detail or exc}") from exc
 
 
-def _active_encode_settings() -> tuple[Path | None, EncodeQuality, bool]:
+def _active_settings() -> FfmpegSettings:
     try:
         from pentaklip.config import settings as app_settings
 
-        cfg = load_ffmpeg_settings(app_settings.data_dir)
-        return resolved_ffmpeg_path(cfg), cfg.quality, cfg.auto_convert_webm
+        return load_ffmpeg_settings(app_settings.data_dir)
     except Exception as settings_exc:  # noqa: BLE001
         _ = settings_exc
-        return None, "standard", True
+        return FfmpegSettings()
+
+
+def _run_reencode(
+    ffmpeg: Path,
+    build_cmd: Callable[[list[str]], list[str]],
+    *,
+    cfg: FfmpegSettings,
+) -> list[str]:
+    """Run GPU/CPU encode; auto (and missing HW) fall back to libx264 on failure."""
+    args, backend, _codec = encode_args_for_settings(cfg, ffmpeg=ffmpeg)
+    command = build_cmd(args)
+    try:
+        _run_ffmpeg(command)
+        return command
+    except RuntimeError:
+        if backend == "cpu":
+            raise
+        # GPU encoder missing/failed (auto or explicit): retry once with libx264.
+        cpu_args, _, _ = encode_args_for_settings(cfg, ffmpeg=ffmpeg, force_cpu=True)
+        command = build_cmd(cpu_args)
+        _run_ffmpeg(command)
+        return command
 
 
 def convert_to_mp4(
@@ -80,26 +104,33 @@ def convert_to_mp4(
     *,
     ffmpeg_path: Path | None = None,
     quality: EncodeQuality | None = None,
+    encoder: EncodeBackend | None = None,
 ) -> ExportResult:
     """Transcode ``source`` (e.g. webm) to H.264/AAC mp4 for reliable cutting."""
     source = source.resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Source video not found: {source}")
 
-    configured_path, configured_quality, _ = _active_encode_settings()
-    ffmpeg = find_ffmpeg(ffmpeg_path or configured_path)
-    encode_quality = quality or configured_quality
+    cfg = _active_settings()
+    if quality is not None:
+        cfg = cfg.model_copy(update={"quality": quality})
+    if encoder is not None:
+        cfg = cfg.model_copy(update={"encoder": encoder})
+    ffmpeg = find_ffmpeg(ffmpeg_path or resolved_ffmpeg_path(cfg))
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        str(ffmpeg),
-        "-y",
-        "-i",
-        str(source),
-        *encode_args_for_quality(encode_quality),
-        str(output),
-    ]
-    _run_ffmpeg(command)
+
+    def build(encode_args: list[str]) -> list[str]:
+        return [
+            str(ffmpeg),
+            "-y",
+            "-i",
+            str(source),
+            *encode_args,
+            str(output),
+        ]
+
+    command = _run_reencode(ffmpeg, build, cfg=cfg)
     return ExportResult(output_path=output.resolve(), command=command)
 
 
@@ -110,6 +141,7 @@ def ensure_mp4_source(
     ffmpeg_path: Path | None = None,
     force: bool = False,
     quality: EncodeQuality | None = None,
+    encoder: EncodeBackend | None = None,
 ) -> tuple[Path, ExportResult | None]:
     """
     Return an mp4 path suitable for clip cutting.
@@ -128,8 +160,8 @@ def ensure_mp4_source(
         # mkv/mov/avi: keep original; cut_clip may stream-copy or re-encode on failure.
         return source, None
 
-    _, _, auto_convert = _active_encode_settings()
-    if not auto_convert:
+    cfg = _active_settings()
+    if not cfg.auto_convert_webm:
         return source, None
 
     dest_dir = cache_dir.resolve() if cache_dir is not None else source.parent
@@ -143,7 +175,13 @@ def ensure_mp4_source(
     ):
         return dest, None
 
-    result = convert_to_mp4(source, dest, ffmpeg_path=ffmpeg_path, quality=quality)
+    result = convert_to_mp4(
+        source,
+        dest,
+        ffmpeg_path=ffmpeg_path,
+        quality=quality,
+        encoder=encoder,
+    )
     return result.output_path, result
 
 
@@ -156,6 +194,7 @@ def cut_clip(
     ffmpeg_path: Path | None = None,
     reencode: bool | None = None,
     quality: EncodeQuality | None = None,
+    encoder: EncodeBackend | None = None,
 ) -> ExportResult:
     """
     Cut [start_sec, end_sec) from ``source`` into ``output``.
@@ -166,17 +205,20 @@ def cut_clip(
     if end_sec <= start_sec:
         raise ValueError("end_sec must be greater than start_sec")
 
-    configured_path, configured_quality, _ = _active_encode_settings()
-    ffmpeg = find_ffmpeg(ffmpeg_path or configured_path)
-    encode_quality = quality or configured_quality
+    cfg = _active_settings()
+    if quality is not None:
+        cfg = cfg.model_copy(update={"quality": quality})
+    if encoder is not None:
+        cfg = cfg.model_copy(update={"encoder": encoder})
+    ffmpeg = find_ffmpeg(ffmpeg_path or resolved_ffmpeg_path(cfg))
     output.parent.mkdir(parents=True, exist_ok=True)
     duration = end_sec - start_sec
     prefer_reencode = (
         reencode if reencode is not None else source.suffix.lower() in TRANSCODE_TO_MP4_SUFFIXES
     )
 
-    def build(reencode_mode: bool) -> list[str]:
-        cmd = [
+    def build_copy() -> list[str]:
+        return [
             str(ffmpeg),
             "-y",
             "-ss",
@@ -185,23 +227,32 @@ def cut_clip(
             str(source),
             "-t",
             f"{duration:.3f}",
+            "-c",
+            "copy",
+            str(output),
         ]
-        if reencode_mode:
-            cmd.extend(encode_args_for_quality(encode_quality))
-        else:
-            cmd.extend(["-c", "copy"])
-        cmd.append(str(output))
-        return cmd
+
+    def build_reencode(encode_args: list[str]) -> list[str]:
+        return [
+            str(ffmpeg),
+            "-y",
+            "-ss",
+            f"{start_sec:.3f}",
+            "-i",
+            str(source),
+            "-t",
+            f"{duration:.3f}",
+            *encode_args,
+            str(output),
+        ]
 
     if prefer_reencode:
-        command = build(True)
-        _run_ffmpeg(command)
+        command = _run_reencode(ffmpeg, build_reencode, cfg=cfg)
         return ExportResult(output_path=output, command=command)
 
-    command = build(False)
+    command = build_copy()
     try:
         _run_ffmpeg(command)
     except RuntimeError:
-        command = build(True)
-        _run_ffmpeg(command)
+        command = _run_reencode(ffmpeg, build_reencode, cfg=cfg)
     return ExportResult(output_path=output, command=command)
