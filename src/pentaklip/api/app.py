@@ -348,7 +348,11 @@ def api_ffmpeg_status() -> dict:
 
 @app.post("/api/tools/ffmpeg/install")
 def api_ffmpeg_install() -> dict:
-    return install_ffmpeg_winget()
+    try:
+        result = install_ffmpeg_winget()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"ffmpeg install failed: {exc}") from exc
+    return result
 
 
 @app.post("/api/tools/ffmpeg/add-to-path")

@@ -116,6 +116,7 @@ export function getFfmpegStatus(): Promise<FfmpegStatus> {
 }
 
 export function installFfmpeg(): Promise<{
+  ok?: boolean;
   returncode: number;
   stdout: string;
   stderr: string;

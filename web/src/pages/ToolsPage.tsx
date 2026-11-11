@@ -23,9 +23,20 @@ export function ToolsPage() {
     try {
       const result = await installFfmpeg();
       setStatus(result.status);
-      setLog(
-        `winget exit=${result.returncode}\n${result.stdout || ""}\n${result.stderr || ""}`.trim(),
-      );
+      const summary = [
+        `ok=${String(result.ok ?? result.returncode === 0)}`,
+        `winget exit=${result.returncode}`,
+        result.stdout || "",
+        result.stderr || "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      setLog(summary);
+      if (!result.status?.found && result.returncode !== 0) {
+        setError(
+          "インストールに失敗したか、まだ ffmpeg が見つかりません。ログを確認するか、手動で winget install --id Gyan.FFmpeg -e を実行してください。",
+        );
+      }
     } catch (err) {
       setError(String(err));
     } finally {
