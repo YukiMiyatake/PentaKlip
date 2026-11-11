@@ -45,6 +45,38 @@ def test_plan_segments_from_events_and_manual() -> None:
     assert segments[1].end_sec == 110.0
 
 
+def test_create_clips_converts_webm_before_cut(tmp_path: Path) -> None:
+    video = tmp_path / "match.webm"
+    video.write_bytes(b"webm")
+    out = tmp_path / "clips"
+    converted = out / "match.mp4"
+
+    with (
+        patch(
+            "pentaklip.clips.service.ensure_mp4_source",
+            return_value=(
+                converted,
+                ExportResult(output_path=converted, command=["ffmpeg", "-i"]),
+            ),
+        ) as ensure_mock,
+        patch(
+            "pentaklip.clips.service.cut_clip",
+            return_value=ExportResult(output_path=out / "x.mp4", command=["ffmpeg"]),
+        ) as cut_mock,
+    ):
+        result = create_clips(
+            video,
+            output_dir=out,
+            segments=[ClipSegment(kind="kill", game_time_sec=10, start_sec=5, end_sec=15)],
+            dry_run=False,
+        )
+    ensure_mock.assert_called_once()
+    cut_mock.assert_called_once()
+    assert cut_mock.call_args.args[0] == converted
+    assert result.converted is True
+    assert result.original_source_video == video.resolve()
+
+
 def test_create_clips_dry_run_and_mocked_ffmpeg(tmp_path: Path) -> None:
     video = tmp_path / "match.mp4"
     video.write_bytes(b"fake-video")

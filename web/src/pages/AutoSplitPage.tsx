@@ -82,7 +82,7 @@ export function AutoSplitPage() {
         await fillGameIdFromRofl(p.fixed_target_rofl, p.last_game_id);
         if (p.last_video_dir) {
           setVideoDir(p.last_video_dir);
-          const listed = await listDir(p.last_video_dir, [".mp4", ".mkv", ".mov", ".avi"]);
+          const listed = await listDir(p.last_video_dir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
           setVideos(listed.entries.filter((e) => !e.is_dir));
         }
         if (p.last_events_dir) {
@@ -125,7 +125,7 @@ export function AutoSplitPage() {
   }
 
   async function loadVideos() {
-    const listed = await listDir(videoDir, [".mp4", ".mkv", ".mov", ".avi"]);
+    const listed = await listDir(videoDir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
     setVideoDir(listed.directory);
     setVideos(listed.entries.filter((e) => !e.is_dir));
     if (prefs) await persist({ ...prefs, last_video_dir: listed.directory });
@@ -258,6 +258,7 @@ export function AutoSplitPage() {
       <p className="hint">
         イベント JSON と切り出しクリップは、出力ルート配下の <span className="mono">ゲームID</span>{" "}
         フォルダにまとめて保存します。ffmpeg が必要です（ツールタブで導入）。
+        <span className="mono">.webm</span> は切り分け前に自動で MP4 変換します（ゲームフォルダにキャッシュ）。
       </p>
 
       <div className="result-box" style={{ marginBottom: 16 }}>
@@ -404,7 +405,8 @@ export function AutoSplitPage() {
         <div className="result-box">
           <p className="success">
             {result.clip_count} クリップ
-            {result.game_id ? ` · ${result.game_id}` : ""} → {result.output_dir}
+            {result.game_id ? ` · ${result.game_id}` : ""}
+            {result.converted ? " · webm→mp4 変換済み" : ""} → {result.output_dir}
           </p>
           <ul>
             {result.clips.map((c) => (

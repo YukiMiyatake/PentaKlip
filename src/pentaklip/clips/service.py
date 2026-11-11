@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pentaklip.detect.models import HighlightCandidate, HighlightKind
 from pentaklip.detect.service import detect_from_events
-from pentaklip.export.ffmpeg import ExportResult, cut_clip
+from pentaklip.export.ffmpeg import ExportResult, cut_clip, ensure_mp4_source
 from pentaklip.paths import unique_file_path
 
 
@@ -34,6 +34,8 @@ class ClipJobResult:
     output_dir: Path
     segments: list[ClipSegment]
     clips: list[CreatedClip]
+    original_source_video: Path | None = None
+    converted: bool = False
 
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -127,9 +129,9 @@ def create_clips(
     `source_video` is a full-match recording (or any timeline-aligned video).
     Automated LoL-client capture is out of scope here; feed a recorded file.
     """
-    source_video = source_video.resolve()
-    if not source_video.is_file():
-        raise FileNotFoundError(f"Source video not found: {source_video}")
+    original_source = source_video.resolve()
+    if not original_source.is_file():
+        raise FileNotFoundError(f"Source video not found: {original_source}")
 
     planned = plan_segments(
         events=events,
@@ -145,7 +147,17 @@ def create_clips(
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    prefix = _safe_slug(match_id, source_video.stem)
+    converted = False
+    if dry_run:
+        source_video = original_source
+    else:
+        source_video, convert_result = ensure_mp4_source(
+            original_source,
+            cache_dir=output_dir,
+        )
+        converted = convert_result is not None
+
+    prefix = _safe_slug(match_id, original_source.stem)
     created: list[CreatedClip] = []
     for index, seg in enumerate(planned, start=1):
         label = _safe_slug(seg.label or seg.kind, seg.kind)
@@ -173,4 +185,6 @@ def create_clips(
         output_dir=output_dir,
         segments=planned,
         clips=created,
+        original_source_video=original_source,
+        converted=converted,
     )

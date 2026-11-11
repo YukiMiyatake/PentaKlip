@@ -309,6 +309,10 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
         clip_count=len(clip_items),
         clips=clip_items,
         game_id=game_id,
+        original_source_video=(
+            str(result.original_source_video) if result.original_source_video else None
+        ),
+        converted=result.converted,
     )
 
 
