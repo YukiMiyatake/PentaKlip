@@ -41,6 +41,7 @@ export function AutoSplitPage() {
 
   const [live, setLive] = useState<EventsLiveStatus | null>(null);
   const [exportFilename, setExportFilename] = useState("events.json");
+  const [includeStats, setIncludeStats] = useState(true);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [gameIdSource, setGameIdSource] = useState<string | null>(null);
 
@@ -155,9 +156,21 @@ export function AutoSplitPage() {
         directory: outputRoot || null,
         filename: exportFilename || "events.json",
         game_id: gameId.trim(),
+        include_stats: includeStats,
       });
+      const statsBits = [
+        response.stats_bundle_path ? "stats_bundle.json" : null,
+        response.stats_aggregated_path ? "stats_aggregated.json" : null,
+      ].filter(Boolean);
       setExportNote(
-        `保存しました: ${response.path}（${response.event_count} イベント / ${response.game_id}）`,
+        `保存しました: ${response.path}（${response.event_count} イベント / ${response.game_id}）` +
+          (statsBits.length
+            ? ` + スタッツ（${statsBits.join(", ")}${
+                response.player_count != null ? ` / ${response.player_count}人` : ""
+              }）`
+            : includeStats
+              ? "（スタッツは allgamedata 未取得のためスキップ）"
+              : ""),
       );
       setEventsPath(response.path);
       setEventsDir(response.game_dir);
@@ -215,6 +228,7 @@ export function AutoSplitPage() {
   const liveLabel = live?.available
     ? `接続中 · ${live.event_count} イベント` +
       (live.game_time_sec != null ? ` · ゲーム時間 ${live.game_time_sec.toFixed(0)}s` : "") +
+      (live.player_count != null ? ` · ${live.player_count}人` : "") +
       (live.game_id ? ` · id ${live.game_id}` : "")
     : live?.error
       ? `未接続 · ${live.error}`
@@ -278,6 +292,7 @@ export function AutoSplitPage() {
         <p className="hint">
           リプレイを終端まで Seek してから「今すぐ取得」→「JSON を保存」。
           Live Client は現在の試合時間までのイベントを返します。JSON は生データのまま、戦闘統合は切り分け時です。
+          スタッツ同梱時は終端時点の allgamedata スナップショット（時系列チャート用の連続ポーリングではない）も同じフォルダへ保存します。
         </p>
         <p className="mono">{liveLabel}</p>
         <div className="row">
@@ -291,6 +306,14 @@ export function AutoSplitPage() {
             value={exportFilename}
             onChange={(e) => setExportFilename(e.target.value)}
           />
+          <label className="row" style={{ gap: 6, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={includeStats}
+              onChange={(e) => setIncludeStats(e.target.checked)}
+            />
+            スタッツも保存
+          </label>
           <button className="btn primary" disabled={busy} onClick={() => saveEventsJson()}>
             JSON を保存
           </button>

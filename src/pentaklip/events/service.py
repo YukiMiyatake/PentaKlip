@@ -15,6 +15,10 @@ from pentaklip.paths import (
     sanitize_game_id,
 )
 from pentaklip.record.live_client import LiveClientClient
+from pentaklip.stats.aggregate import aggregate_replay
+from pentaklip.stats.capture import snapshot_from_all_game_data
+from pentaklip.stats.export import export_aggregated_stats, export_replay_stats
+from pentaklip.stats.models import ReplayStatsBundle
 
 
 def utc_now_iso() -> str:
@@ -27,6 +31,7 @@ class EventsLiveStatus(BaseModel):
     event_count: int = 0
     game_time_sec: float | None = None
     game_id: str | None = None
+    player_count: int | None = None
     source: str = "liveclientdata"
     error: str | None = None
 
@@ -38,6 +43,9 @@ class EventsExportResult(BaseModel):
     game_dir: str
     game_time_sec: float | None = None
     source: str = "liveclientdata"
+    stats_bundle_path: str | None = None
+    stats_aggregated_path: str | None = None
+    player_count: int | None = None
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -80,13 +88,23 @@ def suggest_events_filename(*, game_time_sec: float | None = None) -> str:
     return f"events_{stamp}_t{int(game_time_sec)}s.json"
 
 
-def fetch_live_events(client: LiveClientClient | None = None) -> EventsLiveStatus:
-    """Pull current match events from the local Live Client Data API."""
+def fetch_live_events(
+    client: LiveClientClient | None = None,
+) -> tuple[EventsLiveStatus, dict[str, Any] | None]:
+    """
+    Pull current match events (and allgamedata when available).
+
+    Returns ``(status, all_game_data_or_none)``. Callers that only need the
+    status can ignore the second value.
+    """
     live = client or LiveClientClient()
     if not live.is_available():
-        return EventsLiveStatus(
-            available=False,
-            error="Live Client is not available. Start a LoL replay or game first.",
+        return (
+            EventsLiveStatus(
+                available=False,
+                error="Live Client is not available. Start a LoL replay or game first.",
+            ),
+            None,
         )
     try:
         # seek=0 requests history from the first event id.
@@ -105,6 +123,8 @@ def fetch_live_events(client: LiveClientClient | None = None) -> EventsLiveStatu
 
         game_time = extract_game_time_sec(event_payload)
         game_id = extract_game_id_from_live_payload(event_payload)
+        all_data: dict[str, Any] | None = None
+        player_count: int | None = None
         try:
             all_data = live.get_all_game_data()
             for event in extract_events_from_payload(all_data):
@@ -113,6 +133,9 @@ def fetch_live_events(client: LiveClientClient | None = None) -> EventsLiveStatu
                 game_time = extract_game_time_sec(all_data)
             if game_id is None:
                 game_id = extract_game_id_from_live_payload(all_data)
+            players = all_data.get("allPlayers")
+            if isinstance(players, list):
+                player_count = len(players)
         except Exception as enrich_exc:  # noqa: BLE001 - optional enrichment
             _ = enrich_exc
 
@@ -120,18 +143,25 @@ def fetch_live_events(client: LiveClientClient | None = None) -> EventsLiveStatu
             events_by_key.values(),
             key=lambda e: float(e.get("EventTime", e.get("eventTime") or 0.0)),
         )
-        return EventsLiveStatus(
-            available=True,
-            events=events,
-            event_count=len(events),
-            game_time_sec=game_time,
-            game_id=game_id,
-            source="liveclientdata",
+        return (
+            EventsLiveStatus(
+                available=True,
+                events=events,
+                event_count=len(events),
+                game_time_sec=game_time,
+                game_id=game_id,
+                player_count=player_count,
+                source="liveclientdata",
+            ),
+            all_data,
         )
     except Exception as exc:  # noqa: BLE001 - surface as status for UI
-        return EventsLiveStatus(
-            available=False,
-            error=f"Live Client request failed: {exc}",
+        return (
+            EventsLiveStatus(
+                available=False,
+                error=f"Live Client request failed: {exc}",
+            ),
+            None,
         )
 
 
@@ -183,6 +213,32 @@ def resolve_export_path(
     return (base / name).resolve()
 
 
+def build_stats_bundle_from_all_game_data(
+    all_game_data: dict[str, Any],
+    *,
+    events: list[dict[str, Any]] | None = None,
+    game_id: str | None = None,
+) -> ReplayStatsBundle:
+    """Build a one-shot stats bundle from Live Client allgamedata (+ event list)."""
+    snap = snapshot_from_all_game_data(all_game_data)
+    resolved_events = list(events) if events is not None else list(snap.events)
+    return ReplayStatsBundle(
+        original_match_id=game_id,
+        snapshots=[snap],
+        events=resolved_events,
+        meta={
+            "capture_mode": "events_export_oneshot",
+            "note": (
+                "Single allgamedata snapshot at event export time. "
+                "Time-series charts need multi-poll stats capture during playback."
+            ),
+            "snapshot_count": 1,
+            "event_count": len(resolved_events),
+            "game_time_last_sec": snap.game_time_sec,
+        },
+    )
+
+
 def export_events_json(
     *,
     output_path: str | None = None,
@@ -194,28 +250,46 @@ def export_events_json(
     source: str = "liveclientdata",
     client: LiveClientClient | None = None,
     default_dir: Path | None = None,
+    include_stats: bool = True,
+    all_game_data: dict[str, Any] | None = None,
 ) -> EventsExportResult:
     """
     Write events to a JSON file compatible with /api/clips/auto-split.
 
     Files are stored under ``{directory|default}/{game_id}/`` unless ``output_path``
     is an explicit file path. If ``events`` is omitted, fetch from Live Client.
+
+    When ``include_stats`` is True and allgamedata is available, also write
+    ``stats_bundle.json`` (one snapshot) and ``stats_aggregated.json`` beside events.
     """
     resolved_events = list(events) if events is not None else None
     resolved_time = game_time_sec
     resolved_source = source
     resolved_game_id = sanitize_game_id(game_id) if game_id else None
+    resolved_all_data = all_game_data
+    player_count: int | None = None
 
-    if resolved_events is None:
-        status = fetch_live_events(client)
-        if not status.available:
-            raise RuntimeError(status.error or "Live Client unavailable")
-        resolved_events = status.events
-        if resolved_time is None:
-            resolved_time = status.game_time_sec
-        if resolved_game_id is None and status.game_id:
-            resolved_game_id = sanitize_game_id(status.game_id)
-        resolved_source = status.source
+    if resolved_events is None or (include_stats and resolved_all_data is None):
+        status, fetched_all = fetch_live_events(client)
+        if resolved_events is None:
+            if not status.available:
+                raise RuntimeError(status.error or "Live Client unavailable")
+            resolved_events = status.events
+            if resolved_time is None:
+                resolved_time = status.game_time_sec
+            if resolved_game_id is None and status.game_id:
+                resolved_game_id = sanitize_game_id(status.game_id)
+            resolved_source = status.source
+            player_count = status.player_count
+        elif status.available:
+            if resolved_time is None:
+                resolved_time = status.game_time_sec
+            if player_count is None:
+                player_count = status.player_count
+        if resolved_all_data is None:
+            resolved_all_data = fetched_all
+
+    assert resolved_events is not None
 
     if resolved_game_id is None and output_path is None:
         raise ValueError("game_id is required to create a game folder (or pass output_path)")
@@ -240,6 +314,25 @@ def export_events_json(
         source=resolved_source,
     )
     path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    stats_bundle_path: str | None = None
+    stats_aggregated_path: str | None = None
+    if include_stats and resolved_all_data is not None:
+        bundle = build_stats_bundle_from_all_game_data(
+            resolved_all_data,
+            events=resolved_events,
+            game_id=resolved_game_id,
+        )
+        if player_count is None:
+            player_count = len(bundle.snapshots[0].players) if bundle.snapshots else None
+        bundle_path = export_replay_stats(bundle, path.parent / "stats_bundle.json")
+        aggregated = aggregate_replay(bundle)
+        aggregated_path = export_aggregated_stats(
+            aggregated, path.parent / "stats_aggregated.json"
+        )
+        stats_bundle_path = str(bundle_path)
+        stats_aggregated_path = str(aggregated_path)
+
     return EventsExportResult(
         path=str(path),
         event_count=len(resolved_events),
@@ -247,4 +340,7 @@ def export_events_json(
         game_dir=str(path.parent),
         game_time_sec=resolved_time,
         source=resolved_source,
+        stats_bundle_path=stats_bundle_path,
+        stats_aggregated_path=stats_aggregated_path,
+        player_count=player_count,
     )
