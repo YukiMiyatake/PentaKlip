@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pentaklip.events.harvest import EventAccumulator, harvest_events_playthrough
 
-
 SAMPLE_EARLY = [
     {"EventID": 0, "EventName": "GameStart", "EventTime": 0.0},
     {"EventID": 1, "EventName": "ChampionKill", "EventTime": 120.0, "KillerName": "A"},

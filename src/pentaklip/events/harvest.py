@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 from typing import Any
 
 from pentaklip.events.service import (
@@ -209,8 +212,8 @@ def harvest_events_playthrough(
                     "speed": original["speed"] if original["speed"] > 0 else 1.0,
                 }
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:
+            logger.debug('failed to restore replay playback after harvest', exc_info=True)
 
     meta_note = (
         f"harvest playthrough @ {speed:g}x; polls={acc.poll_count}; "
