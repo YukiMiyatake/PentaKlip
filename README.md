@@ -19,7 +19,7 @@ LoL リプレイからキル・集団戦などのハイライトを検出し、�
 
 - タスクごとに `feature/<名前>` ブランチを切り、`main` へ PR する（[`.cursor/rules/pr-per-task.mdc`](.cursor/rules/pr-per-task.mdc)）
 - PR には `feature` / `fix` / `chore` / `docs` / `ci` のいずれかのラベルが必要
-- `auto-merge` ラベル付き PR は CI 成功後に squash マージされる
+- 上記タイプラベル付き PR は CI 成功後に自動で squash マージされる
 - 詳細は [`.github/LABELS.md`](.github/LABELS.md)
 
 ## 初回セットアップ

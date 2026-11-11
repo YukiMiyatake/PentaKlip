@@ -18,7 +18,6 @@ Ensure-Label "chore" "FEF2C0" "Maintenance"
 Ensure-Label "docs" "0075CA" "Documentation"
 Ensure-Label "ci" "BFDADC" "CI / workflow / tooling"
 Ensure-Label "dependencies" "0366D6" "Dependency updates"
-Ensure-Label "auto-merge" "0E8A16" "Squash auto-merge when CI is green"
 
 Write-Host "Configuring repository merge settings..."
 gh repo edit $Repo `
