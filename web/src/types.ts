@@ -144,4 +144,6 @@ export type CreateClipsResponse = {
     output_path: string;
   }>;
   game_id?: string | null;
+  original_source_video?: string | null;
+  converted?: boolean;
 };

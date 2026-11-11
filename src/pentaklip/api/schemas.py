@@ -99,6 +99,8 @@ class CreateClipsResponse(BaseModel):
     clip_count: int
     clips: list[CreatedClipItem]
     game_id: str | None = None
+    original_source_video: str | None = None
+    converted: bool = False
 
 
 class StartStatsSessionRequest(BaseModel):
