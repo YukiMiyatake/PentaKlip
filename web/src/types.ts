@@ -17,6 +17,8 @@ export type Catalog = {
   position_labels?: Partial<Record<Position, string>>;
   table_stat_keys: StatKeyInfo[];
   series_stat_keys: StatKeyInfo[];
+  /** Live Client proxies for LCK-style radar axes. */
+  lck_radar_stat_keys?: StatKeyInfo[];
   all_stat_keys: StatKeyInfo[];
 };
 

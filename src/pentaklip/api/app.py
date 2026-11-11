@@ -62,6 +62,7 @@ from pentaklip.settings_store import (
 )
 from pentaklip.stats.aggregate import aggregate_replay
 from pentaklip.stats.catalog import (
+    LCK_RADAR_STAT_KEYS,
     POSITION_LABELS,
     SERIES_STAT_KEYS,
     STAT_LABELS,
@@ -619,6 +620,9 @@ def api_stats_catalog() -> dict:
         ],
         "series_stat_keys": [
             {"key": k.value, "label": STAT_LABELS[k]} for k in SERIES_STAT_KEYS
+        ],
+        "lck_radar_stat_keys": [
+            {"key": k.value, "label": STAT_LABELS[k]} for k in LCK_RADAR_STAT_KEYS
         ],
         "all_stat_keys": [{"key": k.value, "label": STAT_LABELS[k]} for k in StatKey],
     }

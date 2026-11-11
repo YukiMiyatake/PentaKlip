@@ -41,10 +41,18 @@ class StatKey(StrEnum):
     WARD_SCORE = "ward_score"
     VISION_PER_MIN = "vision_per_min"
     LEVEL = "level"
+    # 15-minute lane diffs (Live Client series; LCK-like proxies)
+    CS_AT_15 = "cs_at_15"
+    LEVEL_AT_15 = "level_at_15"
+    CSD15 = "csd15"
+    LVLD15 = "lvld15"
+    # Composite objective participation (events)
+    OBJECTIVE_SCORE = "objective_score"
     # Identity / matchup
     CHAMPION = "champion"
     TEAM = "team"
     # Timeline / presence
+    # Pocket gold for the Live Client active player only (not gold earned).
     GOLD = "gold"
     ITEM_COUNT = "item_count"
     IS_DEAD = "is_dead"
@@ -69,13 +77,18 @@ STAT_LABELS: dict[StatKey, str] = {
     StatKey.KDA_RATIO: "KDA",
     StatKey.KILL_PARTICIPATION: "KP%",
     StatKey.CREEP_SCORE: "CS",
-    StatKey.CS_PER_MIN: "CSPM",
+    StatKey.CS_PER_MIN: "CSM",
     StatKey.WARD_SCORE: "Vision Score",
     StatKey.VISION_PER_MIN: "VSPM",
     StatKey.LEVEL: "Level",
+    StatKey.CS_AT_15: "CS@15",
+    StatKey.LEVEL_AT_15: "LVL@15",
+    StatKey.CSD15: "CSD15",
+    StatKey.LVLD15: "LVLD15",
+    StatKey.OBJECTIVE_SCORE: "OBJ",
     StatKey.CHAMPION: "Champion",
     StatKey.TEAM: "Team",
-    StatKey.GOLD: "Gold",
+    StatKey.GOLD: "Gold (active)",
     StatKey.ITEM_COUNT: "Items",
     StatKey.IS_DEAD: "Dead",
     StatKey.DRAGON_KILLS: "Dragons",
@@ -101,9 +114,14 @@ TABLE_STAT_KEYS: tuple[StatKey, ...] = (
     StatKey.KILL_PARTICIPATION,
     StatKey.CREEP_SCORE,
     StatKey.CS_PER_MIN,
+    StatKey.CS_AT_15,
+    StatKey.CSD15,
+    StatKey.LEVEL_AT_15,
+    StatKey.LVLD15,
     StatKey.WARD_SCORE,
     StatKey.VISION_PER_MIN,
     StatKey.LEVEL,
+    StatKey.OBJECTIVE_SCORE,
     StatKey.GOLD,
     StatKey.ITEM_COUNT,
     StatKey.DRAGON_KILLS,
@@ -111,6 +129,27 @@ TABLE_STAT_KEYS: tuple[StatKey, ...] = (
     StatKey.HERALD_KILLS,
     StatKey.TOWER_KILLS,
     StatKey.INHIBITOR_KILLS,
+)
+
+# Live Client cannot provide GPM / GD15 / XPD15 / DPM / DMG%.
+# Default radar axes approximate the LCK octagon with available proxies.
+LCK_RADAR_STAT_KEYS: tuple[StatKey, ...] = (
+    StatKey.CS_PER_MIN,  # CSM
+    StatKey.KDA_RATIO,
+    StatKey.KILL_PARTICIPATION,  # ~DMG%
+    StatKey.CSD15,
+    StatKey.LVLD15,  # ~XPD15
+    StatKey.VISION_PER_MIN,  # fills GPM/DPM gap
+    StatKey.OBJECTIVE_SCORE,
+    StatKey.TOWER_KILLS,
+)
+
+# Signed diffs: radar maps [-peak, +peak] → [0, 1] with 0 at center.
+SIGNED_RADAR_STAT_KEYS: frozenset[StatKey] = frozenset(
+    {
+        StatKey.CSD15,
+        StatKey.LVLD15,
+    }
 )
 
 SERIES_STAT_KEYS: tuple[StatKey, ...] = (
