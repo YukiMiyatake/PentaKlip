@@ -5,6 +5,7 @@ import {
   installReplay,
   listDir,
   listLocalReplays,
+  pickDirectory,
   putUiPreferences,
 } from "../api";
 import { RoflOverviewCard } from "../components/RoflOverviewCard";
@@ -190,6 +191,25 @@ export function ReplacePage() {
               }}
               placeholder="C:\Users\...\Downloads"
             />
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() => {
+                pickDirectory({ title: "コピー元フォルダを選択", initial: sourceDir || null })
+                  .then(async (picked) => {
+                    if (picked.cancelled || !picked.path) return;
+                    setSourceDir(picked.path);
+                    await rememberPrefs({ last_source_dir: picked.path });
+                    const listed = await listDir(picked.path, [".rofl"]);
+                    setEntries(listed.entries);
+                    setSourceDir(listed.directory);
+                    await rememberPrefs({ last_source_dir: listed.directory });
+                  })
+                  .catch((err) => setError(String(err)));
+              }}
+            >
+              参照…
+            </button>
             <button className="btn" disabled={busy} onClick={onLoadSourceDir}>
               一覧
             </button>

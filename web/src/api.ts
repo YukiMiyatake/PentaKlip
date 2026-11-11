@@ -130,6 +130,19 @@ export function listDir(
   });
 }
 
+export function pickDirectory(body?: {
+  title?: string | null;
+  initial?: string | null;
+}): Promise<{ path: string | null; cancelled: boolean }> {
+  return request("/api/fs/pick-directory", {
+    method: "POST",
+    body: JSON.stringify({
+      title: body?.title ?? null,
+      initial: body?.initial ?? null,
+    }),
+  });
+}
+
 export function getFfmpegStatus(): Promise<FfmpegStatus> {
   return request("/api/tools/ffmpeg");
 }
