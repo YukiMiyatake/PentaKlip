@@ -16,6 +16,26 @@ const POSITION_ORDER: Position[] = [
   "UNKNOWN",
 ];
 
+const FALLBACK_POSITION_LABELS: Record<Position, string> = {
+  TOP: "TOP",
+  JUNGLE: "JUNGLE",
+  MIDDLE: "MIDDLE",
+  BOTTOM: "BOTTOM",
+  UTILITY: "SUPPORT",
+  UNKNOWN: "UNKNOWN",
+};
+
+function positionLabel(
+  position: Position,
+  catalog: Catalog | null,
+): string {
+  return (
+    catalog?.position_labels?.[position] ??
+    FALLBACK_POSITION_LABELS[position] ??
+    position
+  );
+}
+
 export function DisplaySettingsPage() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [settings, setSettings] = useState<DisplaySettings | null>(null);
@@ -160,7 +180,7 @@ export function DisplaySettingsPage() {
         {POSITION_ORDER.filter((p) => catalog.positions.includes(p)).map(
           (position) => (
             <article className="lane-card" key={position}>
-              <h3>{position}</h3>
+              <h3>{positionLabel(position, catalog)}</h3>
               <div className="stat-group" style={{ marginBottom: 12 }}>
                 <h4>プレイヤー名（あいまい一致）</h4>
                 <div className="row" style={{ marginBottom: 8 }}>

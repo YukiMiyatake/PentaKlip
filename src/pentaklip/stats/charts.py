@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from pentaklip.stats.catalog import SERIES_STAT_KEYS, STAT_LABELS, Position, StatKey
+from pentaklip.stats.catalog import (
+    SERIES_STAT_KEYS,
+    STAT_LABELS,
+    Position,
+    StatKey,
+    position_label,
+)
 from pentaklip.stats.display import DisplaySettings, default_display_settings
 from pentaklip.stats.models import (
     AggregatedReplayStats,
@@ -25,8 +31,8 @@ _RADAR_LOWER_BETTER = {
     StatKey.DEATHS,
 }
 
-# Cap axes so radar stays readable (pentagon / hexagon-ish).
-_RADAR_MAX_AXES = 6
+# Cap axes so radar stays readable; allow more room for jungle objectives.
+_RADAR_MAX_AXES = 8
 
 _POSITION_ORDER = [
     Position.TOP,
@@ -64,7 +70,7 @@ def _table_chart_for_position(
     return ChartSpec(
         chart_id=f"table-{position.value}",
         chart_type="table",
-        title=f"{position.value} stats",
+        title=f"{position_label(position)} stats",
         position=position,
         columns=["player_id", *col_names],
         rows=rows,
@@ -125,7 +131,7 @@ def _lane_compare_chart(
     return ChartSpec(
         chart_id=f"lane-compare-{position.value}",
         chart_type="lane_compare",
-        title=f"{position.value} · Player comparison",
+        title=f"{position_label(position)} · Player comparison",
         position=position,
         series=series,
         columns=["stat"],
@@ -150,27 +156,23 @@ def _baseline_for_radar(
     focus: PlayerPositionAggregate,
     players: list[PlayerPositionAggregate],
     axes: list[StatKey],
+    *,
+    all_players: list[PlayerPositionAggregate] | None = None,
 ) -> tuple[str, dict[str, float | None]]:
-    """Pick opposite-lane opponent (preferred) or lane average as dashed baseline."""
-    others = [p for p in players if p.player_id != focus.player_id]
-    if not others:
-        return "baseline", {k.value: None for k in axes}
+    """Dashed baseline is always an average (never a named 1v1 opponent)."""
+    # Prefer mean of everyone on this lane (stable role average across the set).
+    if len(players) >= 2:
+        return "レーン平均", {k.value: _mean_scalar(players, k) for k in axes}
 
-    opposite = [
+    # Single player on the lane → fall back to match-wide average.
+    pool = [
         p
-        for p in others
-        if focus.team and p.team and str(p.team) != str(focus.team)
+        for p in (all_players or players)
+        if p.player_id != focus.player_id
     ]
-    if len(opposite) == 1:
-        opp = opposite[0]
-        return (
-            f"vs {opp.player_id}",
-            {k.value: _as_number(opp.scalars.get(k.value)) for k in axes},
-        )
-
-    pool = opposite or others
-    label = "敵レーン平均" if opposite else "レーン平均"
-    return label, {k.value: _mean_scalar(pool, k) for k in axes}  # type: ignore[arg-type]
+    if pool:
+        return "全体平均", {k.value: _mean_scalar(pool, k) for k in axes}
+    return "平均", {k.value: None for k in axes}
 
 
 def _normalize_radar_value(
@@ -189,9 +191,11 @@ def _radar_charts_for_position(
     position: Position,
     players: list[PlayerPositionAggregate],
     columns: list[StatKey],
+    *,
+    all_players: list[PlayerPositionAggregate] | None = None,
 ) -> list[ChartSpec]:
     """
-    LCK-style radar (pentagon/hexagon): filled polygon = player, dashed = opponent/avg.
+    LCK-style radar (pentagon/hexagon): filled polygon = player, dashed = average.
 
     Each row is one axis with raw + normalized values for Recharts RadarChart.
     """
@@ -201,7 +205,9 @@ def _radar_charts_for_position(
 
     charts: list[ChartSpec] = []
     for focus in sorted(players, key=lambda p: p.player_id.casefold()):
-        baseline_label, baseline_vals = _baseline_for_radar(focus, players, axes)
+        baseline_label, baseline_vals = _baseline_for_radar(
+            focus, players, axes, all_players=all_players
+        )
         rows: list[dict[str, Any]] = []
         for key in axes:
             player_v = _as_number(focus.scalars.get(key.value))
@@ -235,7 +241,7 @@ def _radar_charts_for_position(
             ChartSpec(
                 chart_id=f"radar-{position.value}-{focus.player_id}",
                 chart_type="radar",
-                title=f"{position.value} · {focus.player_id}",
+                title=f"{position_label(position)} · {focus.player_id}",
                 position=position,
                 series=[
                     ChartSeries(
@@ -276,7 +282,7 @@ def _line_charts_for_player(
             ChartSpec(
                 chart_id=f"line-{player.player_id}-{player.position.value}-{key.value}",
                 chart_type="line",
-                title=f"{player.player_id} ({player.position.value}) — {label}",
+                title=f"{player.player_id} ({position_label(player.position)}) — {label}",
                 position=player.position,
                 series=[
                     ChartSeries(
@@ -309,6 +315,7 @@ def build_charts(
     for player in aggregated.players:
         by_pos.setdefault(player.position, []).append(player)
 
+    all_players = list(aggregated.players)
     applied: dict[str, list[str]] = {}
     for position in _POSITION_ORDER:
         players = by_pos.get(position) or []
@@ -327,7 +334,11 @@ def build_charts(
             compare = _lane_compare_chart(position, players, table_keys)
             if compare is not None:
                 charts.append(compare)
-            charts.extend(_radar_charts_for_position(position, players, table_keys))
+            charts.extend(
+                _radar_charts_for_position(
+                    position, players, table_keys, all_players=all_players
+                )
+            )
         for player in players:
             charts.extend(_line_charts_for_player(player, chart_keys))
 

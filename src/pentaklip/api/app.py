@@ -62,6 +62,7 @@ from pentaklip.settings_store import (
 )
 from pentaklip.stats.aggregate import aggregate_replay
 from pentaklip.stats.catalog import (
+    POSITION_LABELS,
     SERIES_STAT_KEYS,
     STAT_LABELS,
     TABLE_STAT_KEYS,
@@ -612,6 +613,7 @@ def api_reset_ffmpeg_settings() -> dict:
 def api_stats_catalog() -> dict:
     return {
         "positions": [p.value for p in Position],
+        "position_labels": {p.value: POSITION_LABELS[p] for p in Position},
         "table_stat_keys": [
             {"key": k.value, "label": STAT_LABELS[k]} for k in TABLE_STAT_KEYS
         ],
