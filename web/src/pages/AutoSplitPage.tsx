@@ -14,8 +14,18 @@ import type {
   UiPreferences,
 } from "../types";
 
+const GAME_ID_RE = /([A-Za-z0-9]+-\d+)/;
+
+function inferGameIdFromName(name: string | null | undefined): string {
+  if (!name) return "";
+  const match = name.match(GAME_ID_RE);
+  return match?.[1] ?? "";
+}
+
 export function AutoSplitPage() {
   const [prefs, setPrefs] = useState<UiPreferences | null>(null);
+  const [outputRoot, setOutputRoot] = useState("");
+  const [gameId, setGameId] = useState("");
   const [videoDir, setVideoDir] = useState("");
   const [eventsDir, setEventsDir] = useState("");
   const [videos, setVideos] = useState<FsEntry[]>([]);
@@ -29,7 +39,7 @@ export function AutoSplitPage() {
 
   const [live, setLive] = useState<EventsLiveStatus | null>(null);
   const [watching, setWatching] = useState(false);
-  const [exportFilename, setExportFilename] = useState("");
+  const [exportFilename, setExportFilename] = useState("events.json");
   const [exportNote, setExportNote] = useState<string | null>(null);
   const watchRef = useRef<number | null>(null);
 
@@ -37,6 +47,9 @@ export function AutoSplitPage() {
     getUiPreferences()
       .then(async (p) => {
         setPrefs(p);
+        if (p.last_output_root) setOutputRoot(p.last_output_root);
+        if (p.last_game_id) setGameId(p.last_game_id);
+        else if (p.fixed_target_rofl) setGameId(inferGameIdFromName(p.fixed_target_rofl));
         if (p.last_video_dir) {
           setVideoDir(p.last_video_dir);
           const listed = await listDir(p.last_video_dir, [".mp4", ".mkv", ".mov", ".avi"]);
@@ -46,8 +59,6 @@ export function AutoSplitPage() {
           setEventsDir(p.last_events_dir);
           const listed = await listDir(p.last_events_dir, [".json"]);
           setEventFiles(listed.entries.filter((e) => !e.is_dir));
-        } else {
-          setEventsDir("");
         }
       })
       .catch((err) => setError(String(err)));
@@ -63,7 +74,10 @@ export function AutoSplitPage() {
     }
     const tick = () => {
       getLiveEvents()
-        .then(setLive)
+        .then((status) => {
+          setLive(status);
+          if (!gameId && status.game_id) setGameId(status.game_id);
+        })
         .catch((err) => setError(String(err)));
     };
     tick();
@@ -74,7 +88,7 @@ export function AutoSplitPage() {
         watchRef.current = null;
       }
     };
-  }, [watching]);
+  }, [watching, gameId]);
 
   async function persist(next: UiPreferences) {
     setPrefs(await putUiPreferences(next));
@@ -91,36 +105,70 @@ export function AutoSplitPage() {
     const listed = await listDir(eventsDir, [".json"]);
     setEventsDir(listed.directory);
     setEventFiles(listed.entries.filter((e) => !e.is_dir));
-    if (prefs) await persist({ ...prefs, last_events_dir: listed.directory });
+    const inferred = inferGameIdFromName(listed.directory);
+    if (inferred && !gameId) setGameId(inferred);
+    if (prefs) {
+      await persist({
+        ...prefs,
+        last_events_dir: listed.directory,
+        last_game_id: inferred || prefs.last_game_id,
+      });
+    }
+  }
+
+  function selectVideo(path: string, name: string) {
+    setVideoPath(path);
+    const inferred = inferGameIdFromName(name) || inferGameIdFromName(path);
+    if (inferred) setGameId(inferred);
+  }
+
+  function selectEvents(path: string) {
+    setEventsPath(path);
+    const inferred = inferGameIdFromName(path);
+    if (inferred) setGameId(inferred);
   }
 
   async function refreshLive() {
     setError(null);
     try {
-      setLive(await getLiveEvents());
+      const status = await getLiveEvents();
+      setLive(status);
+      if (!gameId && status.game_id) setGameId(status.game_id);
     } catch (err) {
       setError(String(err));
     }
   }
 
   async function saveEventsJson() {
+    if (!gameId.trim()) {
+      setError("ゲームIDを入力してください（例: JP1-1234567890）");
+      return;
+    }
     setBusy(true);
     setError(null);
     setExportNote(null);
     try {
       const response = await exportEvents({
-        directory: eventsDir || null,
-        filename: exportFilename || null,
+        directory: outputRoot || null,
+        filename: exportFilename || "events.json",
+        game_id: gameId.trim(),
       });
       setExportNote(
-        `保存しました: ${response.path}（${response.event_count} イベント）`,
+        `保存しました: ${response.path}（${response.event_count} イベント / ${response.game_id}）`,
       );
       setEventsPath(response.path);
-      const parent = response.path.replace(/[/\\][^/\\]+$/, "");
-      setEventsDir(parent);
-      const listed = await listDir(parent, [".json"]);
+      setEventsDir(response.game_dir);
+      setOutputRoot(response.game_dir.replace(/[/\\][^/\\]+$/, ""));
+      const listed = await listDir(response.game_dir, [".json"]);
       setEventFiles(listed.entries.filter((e) => !e.is_dir));
-      if (prefs) await persist({ ...prefs, last_events_dir: parent });
+      if (prefs) {
+        await persist({
+          ...prefs,
+          last_events_dir: response.game_dir,
+          last_output_root: response.game_dir.replace(/[/\\][^/\\]+$/, ""),
+          last_game_id: response.game_id,
+        });
+      }
       setLive(await getLiveEvents());
     } catch (err) {
       setError(String(err));
@@ -145,11 +193,13 @@ export function AutoSplitPage() {
       const response = await autoSplitClips({
         source_video_path: videoPath,
         events_path: eventsPath,
+        original_match_id: gameId.trim() || null,
         padding_before_sec: padding,
         padding_after_sec: padding,
         dry_run: dryRun,
       });
       setResult(response);
+      if (response.game_id) setGameId(response.game_id);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -159,24 +209,52 @@ export function AutoSplitPage() {
 
   const liveLabel = live?.available
     ? `接続中 · ${live.event_count} イベント` +
-      (live.game_time_sec != null ? ` · ゲーム時間 ${live.game_time_sec.toFixed(0)}s` : "")
+      (live.game_time_sec != null ? ` · ゲーム時間 ${live.game_time_sec.toFixed(0)}s` : "") +
+      (live.game_id ? ` · id ${live.game_id}` : "")
     : live?.error
       ? `未接続 · ${live.error}`
       : "未取得";
+
+  const previewDir =
+    outputRoot && gameId.trim()
+      ? `${outputRoot.replace(/[/\\]+$/, "")}\\${gameId.trim()}`
+      : gameId.trim()
+        ? `{出力ルート}\\${gameId.trim()}`
+        : "（ゲームID未設定）";
 
   return (
     <section className="panel">
       <h2>自動クリップ切り分け</h2>
       <p className="hint">
-        試合の録画動画とイベント JSON からハイライトを検出し、前後秒で自動的にクリップを書き出します。
-        ffmpeg が必要です（ツールタブで導入）。
+        イベント JSON と切り出しクリップは、出力ルート配下の <span className="mono">ゲームID</span>{" "}
+        フォルダにまとめて保存します。ffmpeg が必要です（ツールタブで導入）。
       </p>
+
+      <div className="result-box" style={{ marginBottom: 16 }}>
+        <h3>出力先（ゲームIDフォルダ）</h3>
+        <div className="row">
+          <input
+            className="text-input grow"
+            placeholder="出力ルート（例: D:\\PentaKlip\\matches）"
+            value={outputRoot}
+            onChange={(e) => setOutputRoot(e.target.value)}
+          />
+          <input
+            className="text-input"
+            style={{ width: 220 }}
+            placeholder="ゲームID（JP1-123...）"
+            value={gameId}
+            onChange={(e) => setGameId(e.target.value)}
+          />
+        </div>
+        <p className="mono hint">保存先プレビュー: {previewDir}</p>
+      </div>
 
       <div className="result-box" style={{ marginBottom: 16 }}>
         <h3>イベント JSON 作成</h3>
         <p className="hint">
-          LoL リプレイ（または対局）中に Live Client（2999）からイベントを取得し、自動切り分け用
-          JSON として保存します。イベントは試合開始から累積されるので、終盤に一度保存すれば十分です。
+          LoL リプレイ再生中に Live Client（2999）から取得し、
+          <span className="mono">{"{出力ルート}/{ゲームID}/events.json"}</span> に保存します。
         </p>
         <p className="mono">{liveLabel}</p>
         <div className="row">
@@ -190,18 +268,10 @@ export function AutoSplitPage() {
           >
             {watching ? "監視停止" : "2秒ごとに監視"}
           </button>
-        </div>
-        <div className="row" style={{ marginTop: 8 }}>
-          <input
-            className="text-input grow"
-            placeholder="保存先フォルダ"
-            value={eventsDir}
-            onChange={(e) => setEventsDir(e.target.value)}
-          />
           <input
             className="text-input"
-            style={{ width: 220 }}
-            placeholder="ファイル名（空なら自動）"
+            style={{ width: 180 }}
+            placeholder="ファイル名"
             value={exportFilename}
             onChange={(e) => setExportFilename(e.target.value)}
           />
@@ -230,7 +300,7 @@ export function AutoSplitPage() {
               <button
                 key={v.path}
                 className={`file-item ${videoPath === v.path ? "active" : ""}`}
-                onClick={() => setVideoPath(v.path)}
+                onClick={() => selectVideo(v.path, v.name)}
               >
                 {v.name}
               </button>
@@ -254,7 +324,7 @@ export function AutoSplitPage() {
               <button
                 key={v.path}
                 className={`file-item ${eventsPath === v.path ? "active" : ""}`}
-                onClick={() => setEventsPath(v.path)}
+                onClick={() => selectEvents(v.path)}
               >
                 {v.name}
               </button>
@@ -286,7 +356,8 @@ export function AutoSplitPage() {
       {result ? (
         <div className="result-box">
           <p className="success">
-            {result.clip_count} クリップ → {result.output_dir}
+            {result.clip_count} クリップ
+            {result.game_id ? ` · ${result.game_id}` : ""} → {result.output_dir}
           </p>
           <ul>
             {result.clips.map((c) => (

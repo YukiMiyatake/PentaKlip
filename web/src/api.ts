@@ -140,6 +140,7 @@ export function exportEvents(body: {
   directory?: string | null;
   filename?: string | null;
   events?: Record<string, unknown>[] | null;
+  game_id?: string | null;
   game_time_sec?: number | null;
   source?: string;
 }): Promise<EventsExportResult> {

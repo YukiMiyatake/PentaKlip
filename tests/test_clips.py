@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -105,6 +106,35 @@ def test_clips_api_dry_run(tmp_path: Path) -> None:
     body = response.json()
     assert body["clip_count"] == 1
     assert body["clips"][0]["start_sec"] == 5
+
+
+def test_auto_split_uses_game_id_folder(tmp_path: Path) -> None:
+    video = tmp_path / "rec_JP1-777.mp4"
+    video.write_bytes(b"video")
+    events = {
+        "Events": [{"EventName": "ChampionKill", "EventTime": 30.0}],
+        "meta": {"game_id": "JP1-777"},
+    }
+    events_path = tmp_path / "matches" / "JP1-777" / "events.json"
+    events_path.parent.mkdir(parents=True)
+    events_path.write_text(json.dumps(events), encoding="utf-8")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/clips/auto-split",
+        json={
+            "source_video_path": str(video),
+            "events_path": str(events_path),
+            "dry_run": True,
+            "padding_before_sec": 5,
+            "padding_after_sec": 5,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["game_id"] == "JP1-777"
+    assert Path(body["output_dir"]) == events_path.parent.resolve()
+    assert body["clip_count"] == 1
 
 
 def test_install_api_supports_mode(tmp_path: Path) -> None:

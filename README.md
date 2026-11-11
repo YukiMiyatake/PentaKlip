@@ -112,16 +112,17 @@ npm run build
 前提: 試合の録画ファイル、イベント JSON、ffmpeg
 
 1. WebUI「ffmpeg」タブで導入 / PATH 追加
-2. LoL リプレイを再生した状態で「自動切り分け」タブの **イベント JSON 作成** から保存
-   （Live Client `127.0.0.1:2999` のイベントを取得。終盤に一度保存で OK）
-3. 同じタブで動画と events JSON を選択
-4. ドライラン → 実行
+2. 「自動切り分け」タブで **出力ルート** と **ゲームID**（例: `JP1-1234567890`）を設定
+3. LoL リプレイ再生中に **イベント JSON 作成** から保存
+   → `{出力ルート}/{ゲームID}/events.json`
+4. 同じタブで動画と events JSON を選択し、ドライラン → 実行
+   → クリップも `{出力ルート}/{ゲームID}/` に出力
 
 API:
 
 - `GET /api/events/live` … 現在の Live Client イベント
-- `POST /api/events/export` … イベント JSON 保存（`{ "Events": [...], "meta": {...} }`）
-- `POST /api/clips/auto-split` … 検出 + 切り出し
+- `POST /api/events/export` … イベント JSON 保存（`game_id` 必須。`{ "Events": [...], "meta": {"game_id": ...} }`）
+- `POST /api/clips/auto-split` … 検出 + 切り出し（未指定時はゲームIDフォルダへ）
 
 ## パッケージ構成
 

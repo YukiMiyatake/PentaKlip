@@ -41,6 +41,7 @@ from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
 from pentaklip.detect.service import detect_from_events
 from pentaklip.events.service import export_events_json, fetch_live_events
+from pentaklip.paths import infer_game_id, resolve_game_dir
 from pentaklip.replay.install import (
     install_replay,
     list_local_replays,
@@ -206,7 +207,24 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
         if body.padding_after_sec is not None
         else settings.clip_padding_after_sec
     )
-    output_dir = Path(body.output_dir) if body.output_dir else settings.resolved_clips_dir()
+
+    prefs = load_ui_preferences(settings.data_dir)
+    game_id = infer_game_id(
+        body.original_match_id,
+        body.source_video_path,
+        prefs.fixed_target_rofl,
+        prefs.last_game_id,
+    )
+
+    if body.output_dir:
+        output_dir = Path(body.output_dir)
+    else:
+        root = Path(prefs.last_output_root) if prefs.last_output_root else settings.resolved_clips_dir()
+        if game_id:
+            output_dir = resolve_game_dir(root, game_id)
+        else:
+            output_dir = root
+
     manual = [
         ClipSegment(
             kind=seg.kind,
@@ -227,7 +245,7 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
             padding_before_sec=before,
             padding_after_sec=after,
             dry_run=body.dry_run,
-            match_id=body.original_match_id,
+            match_id=game_id or body.original_match_id,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -235,6 +253,18 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    if game_id and not body.dry_run:
+        changed = False
+        if prefs.last_game_id != game_id:
+            prefs.last_game_id = game_id
+            changed = True
+        root_for_prefs = str(Path(result.output_dir).parent) if game_id else None
+        if root_for_prefs and prefs.last_output_root != root_for_prefs:
+            prefs.last_output_root = root_for_prefs
+            changed = True
+        if changed:
+            save_ui_preferences(settings.data_dir, prefs)
 
     clip_items: list[CreatedClipItem] = []
     db = get_database()
@@ -272,6 +302,7 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
         output_dir=str(result.output_dir),
         clip_count=len(clip_items),
         clips=clip_items,
+        game_id=game_id,
     )
 
 
@@ -284,23 +315,48 @@ def api_list_clips() -> list[dict]:
 def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
     """Detect highlights from events (or events file) and cut clips automatically."""
     events = list(body.events)
+    events_meta: dict = {}
+    events_path: Path | None = None
     if body.events_path:
         events_path = Path(body.events_path)
         if not events_path.is_file():
             raise HTTPException(status_code=404, detail=f"Events file not found: {events_path}")
         loaded = json.loads(events_path.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict) and "Events" in loaded:
-            loaded = loaded["Events"]
-        if isinstance(loaded, dict) and "events" in loaded:
-            loaded = loaded["events"]
+        if isinstance(loaded, dict):
+            meta = loaded.get("meta")
+            if isinstance(meta, dict):
+                events_meta = meta
+            if "Events" in loaded:
+                loaded = loaded["Events"]
+            elif "events" in loaded:
+                loaded = loaded["events"]
         if not isinstance(loaded, list):
             raise HTTPException(status_code=400, detail="Events JSON must be a list or {Events:[...]}")
         events.extend(e for e in loaded if isinstance(e, dict))
 
+    prefs = load_ui_preferences(settings.data_dir)
+    game_id = infer_game_id(
+        body.original_match_id,
+        events_meta.get("game_id"),
+        events_path.parent if events_path else None,
+        body.source_video_path,
+        prefs.fixed_target_rofl,
+        prefs.last_game_id,
+    )
+
+    output_dir = body.output_dir
+    if output_dir is None and game_id:
+        root = Path(prefs.last_output_root) if prefs.last_output_root else settings.resolved_clips_dir()
+        # Prefer same folder as the events file when it already lives under the game id.
+        if events_path is not None and infer_game_id(events_path.parent) == game_id:
+            output_dir = str(events_path.parent)
+        else:
+            output_dir = str(resolve_game_dir(root, game_id))
+
     create_body = CreateClipsRequest(
         source_video_path=body.source_video_path,
-        output_dir=body.output_dir,
-        original_match_id=body.original_match_id,
+        output_dir=output_dir,
+        original_match_id=game_id or body.original_match_id,
         replay_db_id=body.replay_db_id,
         padding_before_sec=body.padding_before_sec,
         padding_after_sec=body.padding_after_sec,
@@ -319,26 +375,58 @@ def api_events_live() -> dict:
 def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
     """Fetch Live Client events (or use provided events) and write clip-compatible JSON."""
     prefs = load_ui_preferences(settings.data_dir)
-    default_dir = Path(prefs.last_events_dir) if prefs.last_events_dir else settings.data_dir / "events"
+    default_root = (
+        Path(prefs.last_output_root)
+        if prefs.last_output_root
+        else (Path(prefs.last_events_dir).parent if prefs.last_events_dir else settings.data_dir / "matches")
+    )
+    game_id = infer_game_id(
+        body.game_id,
+        prefs.last_game_id,
+        prefs.fixed_target_rofl,
+    )
     try:
+        if game_id is None and body.output_path is None:
+            # Last chance: Live Client payload may include a game id.
+            live = fetch_live_events()
+            game_id = live.game_id
+        if game_id is None and body.output_path is None:
+            raise HTTPException(
+                status_code=400,
+                detail="game_id is required (e.g. JP1-1234567890) to create an output folder",
+            )
         result = export_events_json(
             output_path=body.output_path,
-            directory=body.directory,
+            directory=body.directory or str(default_root),
             filename=body.filename,
             events=body.events,
+            game_id=game_id,
             game_time_sec=body.game_time_sec,
             source=body.source,
-            default_dir=default_dir,
+            default_dir=default_root,
         )
+    except HTTPException:
+        raise
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"Failed to write events JSON: {exc}") from exc
 
-    # Remember export directory for the AutoSplit file picker.
     export_dir = str(Path(result.path).parent)
+    root_dir = str(Path(export_dir).parent)
+    changed = False
     if prefs.last_events_dir != export_dir:
         prefs.last_events_dir = export_dir
+        changed = True
+    if prefs.last_output_root != root_dir:
+        prefs.last_output_root = root_dir
+        changed = True
+    if prefs.last_game_id != result.game_id:
+        prefs.last_game_id = result.game_id
+        changed = True
+    if changed:
         save_ui_preferences(settings.data_dir, prefs)
 
     return ExportEventsResponse.model_validate(result.model_dump())
