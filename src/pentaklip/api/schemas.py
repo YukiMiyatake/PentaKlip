@@ -136,3 +136,27 @@ class AggregateStatsRequest(BaseModel):
 class ChartsRequest(BaseModel):
     aggregated: AggregatedReplayStats
     display: DisplaySettings | None = None
+
+
+class UiPreferencesModel(BaseModel):
+    fixed_target_rofl: str | None = None
+    last_source_dir: str | None = None
+    last_video_dir: str | None = None
+    last_events_dir: str | None = None
+
+
+class ListDirRequest(BaseModel):
+    directory: str
+    suffixes: list[str] | None = None
+
+
+class AutoSplitRequest(BaseModel):
+    source_video_path: str
+    events: list[dict] = Field(default_factory=list)
+    events_path: str | None = None
+    output_dir: str | None = None
+    original_match_id: str | None = None
+    replay_db_id: int | None = None
+    padding_before_sec: float | None = None
+    padding_after_sec: float | None = None
+    dry_run: bool = False

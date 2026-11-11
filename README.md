@@ -20,122 +20,92 @@ LoL リプレイからキル・集団戦などのハイライトを検出し、�
 - タスクごとに `feature/<名前>` ブランチを切り、`main` へ PR する（[`.cursor/rules/pr-per-task.mdc`](.cursor/rules/pr-per-task.mdc)）
 - PR には `feature` / `fix` / `chore` / `docs` / `ci` のいずれかのラベルが必要
 - `auto-merge` ラベル付き PR は CI 成功後に squash マージされる
-- 詳細は [`.github/LABELS.md`](.github/LABELS.md)
 
-## 開発セットアップ
-
+## 初回セットアップ
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
+
+cd web
+npm install
+cd ..
 ```
 
-API 起動:
+## 起動コマンド
+
+### API
 
 ```powershell
+.\.venv\Scripts\Activate.ps1
 python -m pentaklip --reload
 ```
 
-ヘルスチェック: `http://127.0.0.1:8787/api/health`
+- API: http://127.0.0.1:8787
+- Docs: http://127.0.0.1:8787/docs
 
-テスト:
+### WebUI（開発）
+
+別ターミナル:
 
 ```powershell
-pytest
+cd web
+npm run dev
 ```
+
+- UI: http://127.0.0.1:5173 （`/api` は 8787 へプロキシ）
+
+### ビルド一体起動
+
+```powershell
+cd web
+npm run build
+cd ..
+python -m pentaklip
+```
+
+- UI+API: http://127.0.0.1:8787/
+
+## WebUI の主な画面
+
+| タブ | 内容 |
+|------|------|
+| 置き換え | LoL フォルダの置き換え先を固定し、コピー元 .rofl を選んで上書きコピー（元ゲーム ID を DB 保存） |
+| 自動切り分け | 録画動画 + イベント JSON からハイライト検出し ffmpeg で自動クリップ |
+| ffmpeg | インストール（winget）と PATH 追加 |
+| スタッツ / 表示設定 | 集計結果の表・グラフとレーン別表示設定 |
+
+## リプレイ置き換え
+
+1. **置き換え先**: `Documents\League of Legends\Replays` のローカル `.rofl` を選ぶ（選び直すまで固定）
+2. 概要表示（試合時間・モード・プラクティス判定など。ROFL メタが読める場合）
+3. **コピー元**: 前回フォルダを維持した一覧から選択 + 概要表示
+4. **コピーして貼り付け**: 置き換え先 ID 名でコピー。元マッチ ID は DB に保存
+
+API: `POST /api/replays/install`, `GET /api/replays/inspect`, `GET /api/ui/preferences`
+
+## 自動クリップ切り分け
+
+前提: 試合の録画ファイル、イベント JSON、ffmpeg
+
+1. WebUI「ffmpeg」タブで導入 / PATH 追加
+2. 「自動切り分け」タブで動画と events JSON を選択
+3. ドライラン → 実行
+
+API: `POST /api/clips/auto-split`（内部で検出 + `/api/clips/create`）
 
 ## パッケージ構成
 
 ```text
 src/pentaklip/
   api/       FastAPI
-  replay/    .rofl リネーム / 配置・元マッチ ID
+  replay/    リネーム / メタデータ
+  clips/     クリップ作成
   detect/    ハイライト検出
-  clips/     クリップ作成ジョブ
-  record/    Replay / Live Client API
-  stats/     スタッツ収集 / 集計 / グラフ（分離）
+  tools/     ffmpeg セットアップ
+  stats/     スタッツ
   export/    ffmpeg 切り出し
   store/     SQLite
+web/         React UI
 ```
-
-## リネーム（.rofl 配置）
-
-ダウンロードしたリプレイを、自分のローカルリプレイ ID 名で LoL の Replays フォルダへ配置します。**元のマッチ ID は DB に保持**します。
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python -m pentaklip --reload
-```
-
-例（PowerShell + curl）:
-
-```powershell
-curl -X POST http://127.0.0.1:8787/api/replays/install `
-  -H "Content-Type: application/json" `
-  -d '{
-    "source_path": "C:\\Downloads\\KR-1234567890.rofl",
-    "local_replay_id": "JP1-1111111111",
-    "mode": "copy",
-    "dry_run": false
-  }'
-```
-
-| mode | 動作 |
-|------|------|
-| `copy` | コピーして配置（既定） |
-| `move` | 移動して配置 |
-| `rename_in_place` | 同じフォルダ内でファイル名だけ変更 |
-
-関連 API:
-
-- `GET /api/replays/local` … ローカル Replays 内の `.rofl` 一覧
-- `GET /api/replays/parse-id?path=...` … ファイル名からマッチ ID を抽出
-- `GET /api/replays` … DB に記録した配置履歴
-
-## クリップ作成
-
-前提:
-
-1. 試合全体の録画動画がある（OBS 等。LoL クライアント自動録画は未実装）
-2. 切り出し区間が分かる（手動秒数 / 検出済み highlights / Live Client の events）
-3. `ffmpeg` が PATH にある
-
-```powershell
-# 手動区間で作成
-curl -X POST http://127.0.0.1:8787/api/clips/create `
-  -H "Content-Type: application/json" `
-  -d '{
-    "source_video_path": "C:\\Videos\\match.mp4",
-    "original_match_id": "KR-1234567890",
-    "segments": [
-      {"start_sec": 110, "end_sec": 130, "kind": "kill", "label": "solo"}
-    ]
-  }'
-```
-
-イベントから自動検出して切る例:
-
-```powershell
-curl -X POST http://127.0.0.1:8787/api/clips/create `
-  -H "Content-Type: application/json" `
-  -d '{
-    "source_video_path": "C:\\Videos\\match.mp4",
-    "padding_before_sec": 10,
-    "padding_after_sec": 10,
-    "events": [
-      {"EventName": "ChampionKill", "EventTime": 120.0}
-    ]
-  }'
-```
-
-出力先既定: `%LOCALAPPDATA%\PentaKlip\clips`  
-一覧: `GET /api/clips`  
-試行のみ: `"dry_run": true`
-
-## スタッツ API（概要）
-
-- `POST /api/stats/sessions` → ingest/poll → finalize（JSON/YAML 出力可）
-- `POST /api/stats/aggregate` … 集計のみ
-- `POST /api/stats/charts` … グラフ化のみ（集計結果 + レーン別表示設定）
-- `GET/PUT /api/stats/display-settings` … レーンごとに表示するスタッツを設定
