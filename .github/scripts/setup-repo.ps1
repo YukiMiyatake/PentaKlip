@@ -28,17 +28,14 @@ gh repo edit $Repo `
     --allow-update-branch
 
 Write-Host "Applying branch protection on main..."
-# Classic protection via API (works on private repos with admin).
+# Classic branch protection on private repos requires GitHub Pro (or a public repo).
 $protection = @{
     required_status_checks = @{
         strict = $true
         contexts = @("CI summary")
     }
     enforce_admins = $false
-    required_pull_request_reviews = @{
-        required_approving_review_count = 0
-        dismiss_stale_reviews = $true
-    }
+    required_pull_request_reviews = $null
     restrictions = $null
     allow_force_pushes = $false
     allow_deletions = $false
@@ -46,6 +43,11 @@ $protection = @{
     required_conversation_resolution = $true
 } | ConvertTo-Json -Depth 6
 
-$protection | gh api -X PUT "repos/$Repo/branches/main/protection" --input - 
+try {
+    $protection | gh api -X PUT "repos/$Repo/branches/main/protection" --input -
+    Write-Host "Branch protection applied."
+} catch {
+    Write-Warning "Branch protection failed (common on private free plans). Upgrade to Pro or make the repo public, then re-run this script."
+}
 
 Write-Host "Done. Verify: https://github.com/$Repo/settings/branches"
