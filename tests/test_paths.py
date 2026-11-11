@@ -23,6 +23,10 @@ def test_infer_game_id_from_sources(tmp_path: Path) -> None:
     assert infer_game_id(video) == "JP1-555666777"
     assert infer_game_id(None, tmp_path / "JP1-111", "ignore") == "JP1-111"
     assert extract_game_id_from_live_payload({"gameData": {"gameId": "NA1-42"}}) == "NA1-42"
+    assert (
+        extract_game_id_from_live_payload({"gameData": {"gameId": "612229453"}})
+        == "JP1-612229453"
+    )
 
 
 def test_allocate_game_dir_collision_uses_suffix(tmp_path: Path) -> None:
