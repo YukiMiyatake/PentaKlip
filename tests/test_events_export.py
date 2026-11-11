@@ -45,6 +45,17 @@ class FakeLiveClient:
     def get_all_game_data(self) -> dict:
         payload: dict = {
             "events": {"Events": SAMPLE_EVENTS},
+            "allPlayers": [
+                {
+                    "riotIdGameName": "MidLaner",
+                    "riotIdTagLine": "JP1",
+                    "championName": "Ahri",
+                    "team": "ORDER",
+                    "position": "MIDDLE",
+                    "level": 11,
+                    "scores": {"kills": 3, "deaths": 1, "assists": 4},
+                }
+            ],
         }
         if self.with_game_time:
             payload["gameData"] = {"gameTime": 310.0}
@@ -81,16 +92,51 @@ def test_build_and_export_events_json(tmp_path: Path) -> None:
 
 
 def test_fetch_live_events_unavailable() -> None:
-    status = fetch_live_events(FakeLiveClient(available=False))  # type: ignore[arg-type]
+    status, all_data = fetch_live_events(FakeLiveClient(available=False))  # type: ignore[arg-type]
     assert status.available is False
     assert status.event_count == 0
+    assert all_data is None
 
 
 def test_fetch_live_events_ok() -> None:
-    status = fetch_live_events(FakeLiveClient())  # type: ignore[arg-type]
+    status, all_data = fetch_live_events(FakeLiveClient())  # type: ignore[arg-type]
     assert status.available is True
     assert status.event_count == 3
     assert status.game_time_sec == 310.0
+    assert status.player_count == 1
+    assert all_data is not None
+    assert len(all_data["allPlayers"]) == 1
+
+
+def test_export_events_with_stats(tmp_path: Path) -> None:
+    result = export_events_json(
+        directory=str(tmp_path),
+        game_id="JP1-STATS",
+        client=FakeLiveClient(),  # type: ignore[arg-type]
+        include_stats=True,
+    )
+    assert Path(result.path).is_file()
+    assert result.stats_bundle_path is not None
+    assert result.stats_aggregated_path is not None
+    assert Path(result.stats_bundle_path).is_file()
+    assert Path(result.stats_aggregated_path).is_file()
+    assert result.player_count == 1
+    bundle = json.loads(Path(result.stats_bundle_path).read_text(encoding="utf-8"))
+    assert bundle["meta"]["capture_mode"] == "events_export_oneshot"
+    assert len(bundle["snapshots"]) == 1
+
+
+def test_export_events_without_stats_skips_files(tmp_path: Path) -> None:
+    result = export_events_json(
+        directory=str(tmp_path),
+        game_id="JP1-NOSTATS",
+        events=SAMPLE_EVENTS,
+        game_time_sec=100.0,
+        include_stats=False,
+    )
+    assert result.stats_bundle_path is None
+    assert result.stats_aggregated_path is None
+    assert not (Path(result.game_dir) / "stats_bundle.json").exists()
 
 
 def test_api_export_with_provided_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,7 +164,7 @@ def test_api_live_when_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         "pentaklip.api.app.fetch_live_events",
-        lambda: EventsLiveStatus(available=False, error="offline"),
+        lambda: (EventsLiveStatus(available=False, error="offline"), None),
     )
     client = TestClient(app)
     response = client.get("/api/events/live")

@@ -182,6 +182,7 @@ class ExportEventsRequest(BaseModel):
     game_id: str | None = None
     game_time_sec: float | None = None
     source: str = "liveclientdata"
+    include_stats: bool = True
 
 
 class ExportEventsResponse(BaseModel):
@@ -191,6 +192,9 @@ class ExportEventsResponse(BaseModel):
     game_dir: str
     game_time_sec: float | None = None
     source: str = "liveclientdata"
+    stats_bundle_path: str | None = None
+    stats_aggregated_path: str | None = None
+    player_count: int | None = None
 
 
 class FfmpegSettingsModel(BaseModel):

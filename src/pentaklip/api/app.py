@@ -404,12 +404,17 @@ def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
 @app.get("/api/events/live")
 def api_events_live() -> dict:
     """Return current Live Client events (empty/unavailable when LoL is not running)."""
-    return fetch_live_events().model_dump()
+    status, _ = fetch_live_events()
+    return status.model_dump()
 
 
 @app.post("/api/events/export", response_model=ExportEventsResponse)
 def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
-    """Fetch Live Client events (or use provided events) and write clip-compatible JSON."""
+    """Fetch Live Client events (or use provided events) and write clip-compatible JSON.
+
+    With ``include_stats`` (default True), also writes stats_bundle.json and
+    stats_aggregated.json from a one-shot allgamedata snapshot.
+    """
     prefs = load_ui_preferences(settings.data_dir)
     default_root = (
         Path(prefs.last_output_root)
@@ -426,7 +431,7 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
     try:
         if game_id is None and body.output_path is None:
             # Last chance: Live Client payload may include a game id.
-            live = fetch_live_events()
+            live, _ = fetch_live_events()
             game_id = live.game_id
         if game_id is None and body.output_path is None:
             raise HTTPException(
@@ -442,6 +447,7 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
             game_time_sec=body.game_time_sec,
             source=body.source,
             default_dir=default_root,
+            include_stats=body.include_stats,
         )
     except HTTPException:
         raise

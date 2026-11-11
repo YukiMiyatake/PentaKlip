@@ -129,6 +129,8 @@ npm run build
 3. リプレイを終端まで Seek → **今すぐ取得** → JSON 保存
    （Live Client は現在時刻までのイベントを返す）
    → `{出力ルート}/{ゲームID}/events.json`（衝突時は `ID-1`）
+   → 既定で同フォルダへ `stats_bundle.json` / `stats_aggregated.json` も保存
+     （終端時点の allgamedata 1 スナップショット。時系列チャート用の連続ポーリングではない）
    → JSON は生イベントのまま。戦闘統合は切り分け時
 4. 同じタブで動画と events JSON を選択し、ドライラン → 実行
    → クリップも同じゲームフォルダへ（同名ファイルは `clip-1.mp4`）
@@ -137,8 +139,8 @@ npm run build
 
 API:
 
-- `GET /api/events/live` … 現在の Live Client イベント
-- `POST /api/events/export` … イベント JSON 保存（`game_id` 必須。`{ "Events": [...], "meta": {"game_id": ...} }`）
+- `GET /api/events/live` … 現在の Live Client イベント（`player_count` 付き）
+- `POST /api/events/export` … イベント JSON 保存（`game_id` 必須。`include_stats` 既定 true でスタッツも同梱）
 - `POST /api/clips/auto-split` … 検出 + 切り出し（未指定時はゲームIDフォルダへ）
 
 ## パッケージ構成

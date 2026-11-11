@@ -159,6 +159,7 @@ export function exportEvents(body: {
   game_id?: string | null;
   game_time_sec?: number | null;
   source?: string;
+  include_stats?: boolean;
 }): Promise<EventsExportResult> {
   return request("/api/events/export", {
     method: "POST",

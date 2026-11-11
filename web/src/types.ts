@@ -126,6 +126,7 @@ export type EventsLiveStatus = {
   event_count: number;
   game_time_sec?: number | null;
   game_id?: string | null;
+  player_count?: number | null;
   source: string;
   error?: string | null;
 };
@@ -137,6 +138,9 @@ export type EventsExportResult = {
   game_dir: string;
   game_time_sec?: number | null;
   source: string;
+  stats_bundle_path?: string | null;
+  stats_aggregated_path?: string | null;
+  player_count?: number | null;
 };
 
 export type CreateClipsResponse = {
