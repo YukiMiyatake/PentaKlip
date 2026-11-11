@@ -42,6 +42,7 @@ from pentaklip.api.schemas import (
 from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
 from pentaklip.detect.service import detect_from_events, summarize_event_coverage
+from pentaklip.events.harvest import harvest_events_playthrough
 from pentaklip.events.service import export_events_json, fetch_live_events
 from pentaklip.game_id import game_id_from_rofl_path
 from pentaklip.paths import allocate_game_dir, infer_game_id
@@ -413,6 +414,20 @@ def api_events_live() -> dict:
     return status.model_dump()
 
 
+@app.post("/api/events/harvest")
+def api_events_harvest(speed: float = 16.0) -> dict:
+    """
+    Play the open replay from the start at high speed and accumulate events.
+
+    One-shot Live Client fetch at late game only sees recent EventTime values;
+    this walk fills early kills/objectives. Requires EnableReplayApi=1.
+    """
+    if speed < 1.0 or speed > 32.0:
+        raise HTTPException(status_code=400, detail="speed must be between 1 and 32")
+    status, _ = harvest_events_playthrough(speed=speed)
+    return status.model_dump()
+
+
 @app.post("/api/events/export", response_model=ExportEventsResponse)
 def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
     """Fetch Live Client events (or use provided events) and write clip-compatible JSON.
@@ -453,6 +468,8 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
             source=body.source,
             default_dir=default_root,
             include_stats=body.include_stats,
+            harvest=body.harvest,
+            harvest_speed=body.harvest_speed,
         )
     except HTTPException:
         raise

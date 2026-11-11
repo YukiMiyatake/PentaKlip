@@ -35,6 +35,7 @@ class EventsLiveStatus(BaseModel):
     player_count: int | None = None
     source: str = "liveclientdata"
     error: str | None = None
+    warning: str | None = None
 
 
 class EventsExportResult(BaseModel):
@@ -255,6 +256,8 @@ def export_events_json(
     default_dir: Path | None = None,
     include_stats: bool = True,
     all_game_data: dict[str, Any] | None = None,
+    harvest: bool = True,
+    harvest_speed: float = 16.0,
 ) -> EventsExportResult:
     """
     Write events to a JSON file compatible with /api/clips/auto-split.
@@ -273,7 +276,15 @@ def export_events_json(
     player_count: int | None = None
 
     if resolved_events is None or (include_stats and resolved_all_data is None):
-        status, fetched_all = fetch_live_events(client)
+        if harvest and resolved_events is None:
+            from pentaklip.events.harvest import harvest_events_playthrough
+
+            status, fetched_all = harvest_events_playthrough(
+                live=client,
+                speed=harvest_speed,
+            )
+        else:
+            status, fetched_all = fetch_live_events(client)
         if resolved_events is None:
             if not status.available:
                 raise RuntimeError(status.error or "Live Client unavailable")

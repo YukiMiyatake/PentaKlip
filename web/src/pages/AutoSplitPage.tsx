@@ -3,6 +3,7 @@ import {
   autoSplitClips,
   exportEvents,
   getLiveEvents,
+  harvestEvents,
   getUiPreferences,
   inspectRofl,
   listDir,
@@ -168,14 +169,19 @@ export function AutoSplitPage() {
     if (inferred) setGameId(inferred);
   }
 
-  async function refreshLive() {
+  async function refreshLive(opts?: { harvest?: boolean }) {
+    const doHarvest = opts?.harvest !== false;
+    setBusy(true);
     setError(null);
     try {
-      const status = await getLiveEvents();
+      const status = doHarvest ? await harvestEvents(16) : await getLiveEvents();
       setLive(status);
       if (!gameId && status.game_id) setGameId(status.game_id);
+      if (status.warning) setExportNote(status.warning);
     } catch (err) {
       setError(String(err));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -193,6 +199,8 @@ export function AutoSplitPage() {
         filename: exportFilename || "events.json",
         game_id: gameId.trim(),
         include_stats: includeStats,
+        harvest: true,
+        harvest_speed: 16,
       });
       const statsBits = [
         response.stats_bundle_path
@@ -222,7 +230,6 @@ export function AutoSplitPage() {
         last_output_root: response.game_dir.replace(/[/\\][^/\\]+$/, ""),
         last_game_id: response.game_id,
       });
-      setLive(await getLiveEvents());
     } catch (err) {
       setError(String(err));
     } finally {
@@ -266,7 +273,8 @@ export function AutoSplitPage() {
     ? `接続中 · ${live.event_count} イベント` +
       (live.game_time_sec != null ? ` · ゲーム時間 ${live.game_time_sec.toFixed(0)}s` : "") +
       (live.player_count != null ? ` · ${live.player_count}人` : "") +
-      (live.game_id ? ` · id ${live.game_id}` : "")
+      (live.game_id ? ` · id ${live.game_id}` : "") +
+      (live.source ? ` · ${live.source}` : "")
     : live?.error
       ? `未接続 · ${live.error}`
       : "未取得";
@@ -330,14 +338,19 @@ export function AutoSplitPage() {
       <div className="result-box" style={{ marginBottom: 16 }}>
         <h3>イベント JSON 作成</h3>
         <p className="hint">
-          リプレイを終端まで Seek してから「今すぐ取得」→「JSON を保存」。
-          Live Client は現在の試合時間までのイベントを返します。JSON は生データのまま、戦闘統合は切り分け時です。
-          スタッツ同梱時は終端時点の allgamedata スナップショット（時系列チャート用の連続ポーリングではない）も同じフォルダへ保存します。
+          「試合を走査して取得」はリプレイを先頭から高速再生し、序盤〜終盤のイベントを蓄積します（終端 Seek
+          だけでは Live Client に序盤が入らないことがあります）。Replay API が必要です（
+          <span className="mono">game.cfg</span> の <span className="mono">[General]</span> に{" "}
+          <span className="mono">EnableReplayApi=1</span>）。JSON は生データのまま、戦闘統合は切り分け時です。
         </p>
         <p className="mono">{liveLabel}</p>
+        {live?.warning ? <p className="hint">{live.warning}</p> : null}
         <div className="row">
-          <button className="btn" disabled={busy} onClick={() => refreshLive()}>
-            今すぐ取得
+          <button className="btn primary" disabled={busy} onClick={() => refreshLive({ harvest: true })}>
+            {busy ? "走査中…" : "試合を走査して取得"}
+          </button>
+          <button className="btn" disabled={busy} onClick={() => refreshLive({ harvest: false })}>
+            現在位置のみ
           </button>
           <input
             className="text-input"

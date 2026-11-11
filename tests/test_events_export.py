@@ -115,6 +115,7 @@ def test_export_events_with_stats(tmp_path: Path) -> None:
         game_id="JP1-STATS",
         client=FakeLiveClient(),  # type: ignore[arg-type]
         include_stats=True,
+        harvest=False,
     )
     assert Path(result.path).is_file()
     assert result.stats_bundle_path is not None

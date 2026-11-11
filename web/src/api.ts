@@ -167,6 +167,12 @@ export function getLiveEvents(): Promise<EventsLiveStatus> {
   return request("/api/events/live");
 }
 
+export function harvestEvents(speed = 16): Promise<EventsLiveStatus> {
+  return request(`/api/events/harvest?speed=${encodeURIComponent(String(speed))}`, {
+    method: "POST",
+  });
+}
+
 export function exportEvents(body: {
   output_path?: string | null;
   directory?: string | null;
@@ -176,6 +182,8 @@ export function exportEvents(body: {
   game_time_sec?: number | null;
   source?: string;
   include_stats?: boolean;
+  harvest?: boolean;
+  harvest_speed?: number;
 }): Promise<EventsExportResult> {
   return request("/api/events/export", {
     method: "POST",
