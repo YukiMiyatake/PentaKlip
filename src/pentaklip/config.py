@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     live_client_base_url: str = "https://127.0.0.1:2999"
     clip_padding_before_sec: float = 10.0
     clip_padding_after_sec: float = 10.0
+    clip_merge_gap_sec: float = 25.0
     clips_dir: Path | None = None
 
     def resolved_database_path(self) -> Path:

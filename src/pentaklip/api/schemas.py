@@ -55,10 +55,13 @@ class DetectRequest(BaseModel):
     events: list[dict] = Field(default_factory=list)
     padding_before_sec: float | None = None
     padding_after_sec: float | None = None
+    merge_gap_sec: float | None = None
+    merge_fights: bool = True
 
 
 class DetectResponse(BaseModel):
     highlights: list[HighlightCandidate]
+    event_coverage: dict[str, Any] | None = None
 
 
 class ManualClipSegment(BaseModel):
@@ -76,6 +79,8 @@ class CreateClipsRequest(BaseModel):
     replay_db_id: int | None = None
     padding_before_sec: float | None = None
     padding_after_sec: float | None = None
+    merge_gap_sec: float | None = None
+    merge_fights: bool = True
     events: list[dict] = Field(default_factory=list)
     highlights: list[HighlightCandidate] = Field(default_factory=list)
     segments: list[ManualClipSegment] = Field(default_factory=list)
@@ -101,6 +106,7 @@ class CreateClipsResponse(BaseModel):
     game_id: str | None = None
     original_source_video: str | None = None
     converted: bool = False
+    event_coverage: dict[str, Any] | None = None
 
 
 class StartStatsSessionRequest(BaseModel):
@@ -164,6 +170,8 @@ class AutoSplitRequest(BaseModel):
     replay_db_id: int | None = None
     padding_before_sec: float | None = None
     padding_after_sec: float | None = None
+    merge_gap_sec: float | None = None
+    merge_fights: bool = True
     dry_run: bool = False
 
 class ExportEventsRequest(BaseModel):

@@ -154,4 +154,11 @@ export type CreateClipsResponse = {
   game_id?: string | null;
   original_source_video?: string | null;
   converted?: boolean;
+  event_coverage?: {
+    total_events?: number;
+    by_name?: Record<string, number>;
+    used_for_clips?: Record<string, number>;
+    ignored?: Record<string, number>;
+    clip_event_names?: string[];
+  } | null;
 };

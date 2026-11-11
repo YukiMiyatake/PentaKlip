@@ -172,6 +172,8 @@ export function autoSplitClips(body: {
   events_path?: string | null;
   padding_before_sec?: number;
   padding_after_sec?: number;
+  merge_gap_sec?: number;
+  merge_fights?: boolean;
   original_match_id?: string | null;
   dry_run?: boolean;
 }): Promise<CreateClipsResponse> {

@@ -53,11 +53,14 @@ def plan_segments(
     segments: list[ClipSegment] | None = None,
     padding_before_sec: float = 10.0,
     padding_after_sec: float = 10.0,
+    merge_gap_sec: float = 25.0,
+    merge_fights: bool = True,
 ) -> list[ClipSegment]:
     """
     Build clip segments from explicit ranges, highlight candidates, and/or events.
 
     Priority merge order: explicit segments, then highlights, then detected events.
+    Detected events are fight-merged by default (nearby kills → one clip).
     """
     planned: list[ClipSegment] = []
 
@@ -81,6 +84,8 @@ def plan_segments(
             events,
             padding_before_sec=padding_before_sec,
             padding_after_sec=padding_after_sec,
+            merge_gap_sec=merge_gap_sec,
+            merge_fights=merge_fights,
         )
         for item in detected:
             planned.append(
@@ -120,6 +125,8 @@ def create_clips(
     segments: list[ClipSegment] | None = None,
     padding_before_sec: float = 10.0,
     padding_after_sec: float = 10.0,
+    merge_gap_sec: float = 25.0,
+    merge_fights: bool = True,
     dry_run: bool = False,
     match_id: str | None = None,
 ) -> ClipJobResult:
@@ -139,6 +146,8 @@ def create_clips(
         segments=segments,
         padding_before_sec=padding_before_sec,
         padding_after_sec=padding_after_sec,
+        merge_gap_sec=merge_gap_sec,
+        merge_fights=merge_fights,
     )
     if not planned:
         raise ValueError("No clip segments to create (provide events, highlights, or segments)")
