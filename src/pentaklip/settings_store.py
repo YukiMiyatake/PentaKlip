@@ -56,7 +56,11 @@ def list_directory(
         raise FileNotFoundError(f"Directory not found: {directory}")
     wanted = {s.lower() for s in suffixes} if suffixes else None
     entries: list[FsEntry] = []
-    for item in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+    try:
+        children = list(directory.iterdir())
+    except OSError as exc:
+        raise FileNotFoundError(f"Cannot read directory: {directory}") from exc
+    for item in sorted(children, key=lambda p: (not p.is_dir(), p.name.lower())):
         if item.is_dir():
             entries.append(
                 FsEntry(name=item.name, path=str(item), is_dir=True, size_bytes=None, suffix=None)
@@ -65,12 +69,16 @@ def list_directory(
         suffix = item.suffix.lower()
         if wanted is not None and suffix not in wanted:
             continue
+        try:
+            size = item.stat().st_size
+        except OSError:
+            size = None
         entries.append(
             FsEntry(
                 name=item.name,
                 path=str(item),
                 is_dir=False,
-                size_bytes=item.stat().st_size,
+                size_bytes=size,
                 suffix=suffix,
             )
         )

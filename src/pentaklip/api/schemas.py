@@ -163,6 +163,7 @@ class UiPreferencesModel(BaseModel):
 
 class ListDirRequest(BaseModel):
     directory: str
+    suffixes: list[str] | None = None
 
 
 class PickDirectoryRequest(BaseModel):
