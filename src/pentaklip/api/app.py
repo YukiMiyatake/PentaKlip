@@ -24,6 +24,7 @@ from pentaklip.api.schemas import (
     DetectResponse,
     ExportEventsRequest,
     ExportEventsResponse,
+    FfmpegSettingsModel,
     FinalizeStatsRequest,
     FinalizeStatsResponse,
     HealthResponse,
@@ -75,6 +76,12 @@ from pentaklip.stats.export import export_replay_stats, load_replay_stats
 from pentaklip.stats.models import AggregatedReplayStats, ChartBundle
 from pentaklip.stats.sessions import create_session, get_session, pop_session
 from pentaklip.store.db import get_database
+from pentaklip.tools.ffmpeg_settings import (
+    FfmpegSettings,
+    default_ffmpeg_settings,
+    load_ffmpeg_settings,
+    save_ffmpeg_settings,
+)
 from pentaklip.tools.ffmpeg_setup import (
     add_discovered_ffmpeg_to_path,
     get_ffmpeg_status,
@@ -506,6 +513,32 @@ def api_ffmpeg_add_to_path() -> dict:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return status.model_dump()
+
+
+@app.get("/api/tools/ffmpeg/settings", response_model=FfmpegSettingsModel)
+def api_get_ffmpeg_settings() -> FfmpegSettingsModel:
+    return FfmpegSettingsModel.model_validate(
+        load_ffmpeg_settings(settings.data_dir).model_dump()
+    )
+
+
+@app.put("/api/tools/ffmpeg/settings", response_model=FfmpegSettingsModel)
+def api_put_ffmpeg_settings(body: FfmpegSettingsModel) -> FfmpegSettingsModel:
+    if body.ffmpeg_path:
+        path = Path(body.ffmpeg_path).expanduser()
+        if not path.is_file():
+            raise HTTPException(status_code=400, detail=f"ffmpeg path not found: {path}")
+    saved = save_ffmpeg_settings(
+        settings.data_dir,
+        FfmpegSettings.model_validate(body.model_dump()),
+    )
+    return FfmpegSettingsModel.model_validate(saved.model_dump())
+
+
+@app.post("/api/tools/ffmpeg/settings/reset", response_model=FfmpegSettingsModel)
+def api_reset_ffmpeg_settings() -> FfmpegSettingsModel:
+    saved = save_ffmpeg_settings(settings.data_dir, default_ffmpeg_settings())
+    return FfmpegSettingsModel.model_validate(saved.model_dump())
 
 
 @app.get("/api/stats/catalog")

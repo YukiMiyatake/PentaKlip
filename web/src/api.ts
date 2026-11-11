@@ -6,6 +6,7 @@ import type {
   DisplaySettings,
   EventsExportResult,
   EventsLiveStatus,
+  FfmpegSettings,
   FfmpegStatus,
   FsEntry,
   LocalReplayItem,
@@ -129,6 +130,21 @@ export function installFfmpeg(): Promise<{
 
 export function addFfmpegToPath(): Promise<FfmpegStatus> {
   return request("/api/tools/ffmpeg/add-to-path", { method: "POST" });
+}
+
+export function getFfmpegSettings(): Promise<FfmpegSettings> {
+  return request("/api/tools/ffmpeg/settings");
+}
+
+export function putFfmpegSettings(settings: FfmpegSettings): Promise<FfmpegSettings> {
+  return request("/api/tools/ffmpeg/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+export function resetFfmpegSettings(): Promise<FfmpegSettings> {
+  return request("/api/tools/ffmpeg/settings/reset", { method: "POST" });
 }
 
 export function getLiveEvents(): Promise<EventsLiveStatus> {

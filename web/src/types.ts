@@ -112,6 +112,14 @@ export type FfmpegStatus = {
   hints: string[];
 };
 
+export type FfmpegQuality = "light" | "standard" | "high";
+
+export type FfmpegSettings = {
+  ffmpeg_path: string | null;
+  quality: FfmpegQuality;
+  auto_convert_webm: boolean;
+};
+
 export type EventsLiveStatus = {
   available: boolean;
   events: Record<string, unknown>[];

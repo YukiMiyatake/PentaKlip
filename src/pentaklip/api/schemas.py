@@ -183,3 +183,9 @@ class ExportEventsResponse(BaseModel):
     game_dir: str
     game_time_sec: float | None = None
     source: str = "liveclientdata"
+
+
+class FfmpegSettingsModel(BaseModel):
+    ffmpeg_path: str | None = None
+    quality: Literal["light", "standard", "high"] = "standard"
+    auto_convert_webm: bool = True

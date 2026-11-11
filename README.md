@@ -90,6 +90,13 @@ python -m pentaklip
 
 ### 4. テスト / チェック
 
+| タブ | 内容 |
+|------|------|
+| 置き換え | LoL フォルダの置き換え先を固定し、コピー元 .rofl を選んで上書きコピー（元ゲーム ID を DB 保存） |
+| 自動切り分け | 録画動画 + イベント JSON からハイライト検出し ffmpeg で自動クリップ |
+| ffmpeg | インストール（winget）・PATH 追加・簡易設定（品質 / パス / webm自動変換） |
+| スタッツ / 表示設定 | 集計結果の表・グラフとレーン別表示設定 |
+
 ```powershell
 # Python
 .\.venv\Scripts\Activate.ps1
