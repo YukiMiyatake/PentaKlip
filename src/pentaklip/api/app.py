@@ -42,6 +42,12 @@ from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
 from pentaklip.detect.service import detect_from_events, summarize_event_coverage
 from pentaklip.events.service import export_events_json, fetch_live_events
+from pentaklip.events.sessions import (
+    create_events_session,
+    get_active_events_session,
+    get_events_session,
+    pop_events_session,
+)
 from pentaklip.game_id import game_id_from_rofl_path
 from pentaklip.paths import allocate_game_dir, infer_game_id
 from pentaklip.replay.install import (
@@ -404,7 +410,41 @@ def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
 @app.get("/api/events/live")
 def api_events_live() -> dict:
     """Return current Live Client events (empty/unavailable when LoL is not running)."""
+    active = get_active_events_session()
+    if active is not None:
+        status = active.poll()
+        payload = status.model_dump()
+        payload["capture"] = active.status()
+        return payload
     return fetch_live_events().model_dump()
+
+
+@app.post("/api/events/sessions")
+def api_events_session_start() -> dict:
+    """Start accumulating events (call near replay start, poll until export)."""
+    existing = get_active_events_session()
+    if existing is not None:
+        pop_events_session(existing.session_id)
+    session = create_events_session()
+    status = session.poll()
+    return {"session_id": session.session_id, "status": status.model_dump(), "capture": session.status()}
+
+
+@app.post("/api/events/sessions/{session_id}/poll")
+def api_events_session_poll(session_id: str) -> dict:
+    session = get_events_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Unknown events session")
+    status = session.poll()
+    return {"session_id": session.session_id, "status": status.model_dump(), "capture": session.status()}
+
+
+@app.delete("/api/events/sessions/{session_id}")
+def api_events_session_stop(session_id: str) -> dict:
+    session = pop_events_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Unknown events session")
+    return {"stopped": True, "event_count": len(session.events), "capture": session.status()}
 
 
 @app.post("/api/events/export", response_model=ExportEventsResponse)
