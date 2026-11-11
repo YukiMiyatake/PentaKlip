@@ -89,6 +89,48 @@ class Database:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def find_replay_by_installed_path(self, installed_path: str | Path) -> dict[str, Any] | None:
+        target = str(Path(installed_path).expanduser().resolve())
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM replays
+                WHERE installed_path = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (target,),
+            ).fetchone()
+            if row is None:
+                # Fallback: compare resolved paths in Python (slash / case differences).
+                rows = conn.execute(
+                    "SELECT * FROM replays ORDER BY id DESC"
+                ).fetchall()
+                for item in rows:
+                    stored = item["installed_path"]
+                    if not stored:
+                        continue
+                    try:
+                        if Path(stored).expanduser().resolve() == Path(target):
+                            return dict(item)
+                    except OSError:
+                        continue
+                return None
+            return dict(row)
+
+    def find_replay_by_local_id(self, local_replay_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM replays
+                WHERE local_replay_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (local_replay_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
     def insert_highlight(
         self,
         *,

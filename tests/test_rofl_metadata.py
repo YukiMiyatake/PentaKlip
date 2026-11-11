@@ -30,10 +30,30 @@ def test_inspect_classic_rofl(tmp_path: Path) -> None:
         )
     )
     overview = inspect_rofl(path)
-    assert overview.match_id == "JP1-123456"
+    # No REGION id in meta → rename-stable fingerprint (not filename).
+    assert overview.match_id_source == "meta_fingerprint"
+    assert overview.match_id and overview.match_id.startswith("rofl-")
     assert overview.game_length_sec == 125.0
     assert overview.game_mode == "CLASSIC"
     assert overview.is_practice_tool is False
+
+
+def test_inspect_prefers_explicit_meta_game_id(tmp_path: Path) -> None:
+    path = tmp_path / "renamed-local.rofl"
+    path.write_bytes(
+        _classic_rofl_bytes(
+            {
+                "gameLength": 125000,
+                "gameVersion": "14.1.1",
+                "gameMode": "CLASSIC",
+                "gameId": "KR-999888777",
+                "statsJson": "[]",
+            }
+        )
+    )
+    overview = inspect_rofl(path)
+    assert overview.match_id == "KR-999888777"
+    assert overview.match_id_source == "meta"
 
 
 def test_inspect_practice_mode(tmp_path: Path) -> None:

@@ -66,6 +66,7 @@ export type RoflOverview = {
   path: string;
   filename: string;
   match_id?: string | null;
+  match_id_source?: "meta" | "meta_fingerprint" | "filename" | null;
   format?: string | null;
   game_version?: string | null;
   game_length_ms?: number | null;

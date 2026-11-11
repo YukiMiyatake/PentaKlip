@@ -9,6 +9,7 @@ from pathlib import Path
 from pentaklip.detect.models import HighlightCandidate, HighlightKind
 from pentaklip.detect.service import detect_from_events
 from pentaklip.export.ffmpeg import ExportResult, cut_clip
+from pentaklip.paths import unique_file_path
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,7 @@ def create_clips(
     for index, seg in enumerate(planned, start=1):
         label = _safe_slug(seg.label or seg.kind, seg.kind)
         filename = f"{prefix}_{index:02d}_{label}_{int(seg.start_sec)}-{int(seg.end_sec)}.mp4"
-        output_path = output_dir / filename
+        output_path = unique_file_path(output_dir / filename)
         if dry_run:
             created.append(
                 CreatedClip(

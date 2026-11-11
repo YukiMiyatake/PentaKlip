@@ -9,7 +9,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from pentaklip.paths import extract_game_id_from_live_payload, resolve_game_dir, sanitize_game_id
+from pentaklip.paths import (
+    allocate_game_dir,
+    extract_game_id_from_live_payload,
+    sanitize_game_id,
+)
 from pentaklip.record.live_client import LiveClientClient
 
 
@@ -153,7 +157,7 @@ def resolve_export_path(
         return Path(output_path).expanduser().resolve()
 
     root = Path(directory).expanduser() if directory else (default_dir or Path.cwd())
-    base = resolve_game_dir(root, game_id) if game_id else root.resolve()
+    base = allocate_game_dir(root, game_id) if game_id else root.resolve()
     if filename:
         name = filename
     elif game_id:
@@ -212,8 +216,8 @@ def export_events_json(
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     # If only output_path was given, still record folder name as game id when possible.
-    if resolved_game_id is None:
-        resolved_game_id = sanitize_game_id(path.parent.name)
+    # Folder may be game_id-1 on collision; persist the actual folder name.
+    resolved_game_id = sanitize_game_id(path.parent.name)
 
     document = build_events_document(
         resolved_events,

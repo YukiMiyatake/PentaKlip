@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from pentaklip.paths import look_like_game_id
 from pentaklip.replay.install import parse_match_id_from_filename
 
 
@@ -15,6 +17,7 @@ class RoflOverview(BaseModel):
     path: str
     filename: str
     match_id: str | None = None
+    match_id_source: Literal["meta", "meta_fingerprint", "filename"] | None = None
     format: str | None = None
     game_version: str | None = None
     game_length_ms: int | None = None
@@ -71,6 +74,88 @@ def _read_rofl2_trailing_metadata(data: bytes) -> dict[str, Any] | None:
     return None
 
 
+def _parse_stats_list(meta: dict[str, Any]) -> list[dict[str, Any]]:
+    stats_raw = meta.get("statsJson") or meta.get("stats_json") or "[]"
+    if isinstance(stats_raw, str):
+        try:
+            loaded = json.loads(stats_raw)
+        except json.JSONDecodeError:
+            return []
+    else:
+        loaded = stats_raw
+    if not isinstance(loaded, list):
+        return []
+    return [s for s in loaded if isinstance(s, dict)]
+
+
+def extract_match_id_from_rofl_meta(meta: dict[str, Any]) -> tuple[str | None, str | None]:
+    """
+    Prefer an explicit match/game id from ROFL metadata.
+
+    Current Riot ROFL JSON usually has no REGION-123 id; in that case return a
+    rename-stable fingerprint derived from length/version/player ids.
+    """
+    candidates: list[object] = []
+    for key in (
+        "gameId",
+        "gameID",
+        "matchId",
+        "matchID",
+        "game_id",
+        "match_id",
+        "gameIdStr",
+    ):
+        candidates.append(meta.get(key))
+
+    stats = _parse_stats_list(meta)
+    for row in stats:
+        for key in ("GAME_ID", "MATCH_ID", "gameId", "matchId", "game_id", "match_id"):
+            candidates.append(row.get(key))
+
+    for raw in candidates:
+        if raw is None or raw == "":
+            continue
+        text = str(raw).strip()
+        # Prefer REGION-digits form when present.
+        region_form = look_like_game_id(text)
+        if region_form and "-" in region_form:
+            return region_form, "meta"
+        # Keep bare numeric game ids from meta when clearly match-like (long).
+        if text.isdigit() and len(text) >= 6:
+            return text, "meta"
+
+    fingerprint = fingerprint_rofl_meta(meta, stats)
+    if fingerprint:
+        return fingerprint, "meta_fingerprint"
+    return None, None
+
+
+def fingerprint_rofl_meta(
+    meta: dict[str, Any],
+    stats: list[dict[str, Any]] | None = None,
+) -> str | None:
+    """Build a rename-stable id from ROFL metadata (not the .rofl filename)."""
+    rows = stats if stats is not None else _parse_stats_list(meta)
+    length = meta.get("gameLength") or meta.get("game_length")
+    version = meta.get("gameVersion") or meta.get("game_version") or ""
+    player_tokens: list[str] = []
+    for row in rows:
+        token = (
+            row.get("ID")
+            or row.get("PUUID")
+            or row.get("RIOT_ID_GAME_NAME")
+            or row.get("NAME")
+            or row.get("name")
+        )
+        if token is not None and str(token).strip():
+            player_tokens.append(str(token).strip())
+    player_tokens = sorted(set(player_tokens))
+    if length is None and not player_tokens and not version:
+        return None
+    material = "|".join([str(length or ""), str(version), *player_tokens])
+    digest = hashlib.sha1(material.encode("utf-8")).hexdigest()[:10]
+    return f"rofl-{digest}"
+
 def _infer_practice(meta: dict[str, Any], stats: list[dict[str, Any]]) -> bool | None:
     mode = str(meta.get("gameMode") or meta.get("game_mode") or "").upper()
     if mode in {"PRACTICETOOL", "PRACTICE", "TUTORIAL"}:
@@ -87,17 +172,7 @@ def _infer_practice(meta: dict[str, Any], stats: list[dict[str, Any]]) -> bool |
 
 
 def _overview_from_meta(path: Path, meta: dict[str, Any], fmt: str) -> RoflOverview:
-    stats_raw = meta.get("statsJson") or meta.get("stats_json") or "[]"
-    stats: list[dict[str, Any]] = []
-    if isinstance(stats_raw, str):
-        try:
-            loaded = json.loads(stats_raw)
-            if isinstance(loaded, list):
-                stats = [s for s in loaded if isinstance(s, dict)]
-        except json.JSONDecodeError:
-            stats = []
-    elif isinstance(stats_raw, list):
-        stats = [s for s in stats_raw if isinstance(s, dict)]
+    stats = _parse_stats_list(meta)
 
     length_ms = meta.get("gameLength") or meta.get("game_length")
     length_ms_i = int(length_ms) if length_ms is not None else None
@@ -109,10 +184,30 @@ def _overview_from_meta(path: Path, meta: dict[str, Any], fmt: str) -> RoflOverv
     if not game_mode and stats:
         game_mode = stats[0].get("GAME_MODE") or stats[0].get("gameMode")
 
+    meta_id, meta_source = extract_match_id_from_rofl_meta(meta)
+    filename_id = parse_match_id_from_filename(path)
+    if meta_id:
+        match_id = meta_id
+        match_id_source: Literal["meta", "meta_fingerprint", "filename"] | None = (
+            "meta" if meta_source == "meta" else "meta_fingerprint"
+        )
+        note = None
+        if match_id_source == "meta_fingerprint":
+            note = (
+                "ROFL metadata has no REGION-match id; using rename-stable fingerprint "
+                f"(filename had {filename_id})" if filename_id else
+                "ROFL metadata has no REGION-match id; using rename-stable fingerprint"
+            )
+    else:
+        match_id = filename_id
+        match_id_source = "filename" if filename_id else None
+        note = None
+
     return RoflOverview(
         path=str(path),
         filename=path.name,
-        match_id=parse_match_id_from_filename(path),
+        match_id=match_id,
+        match_id_source=match_id_source,
         format=fmt,
         game_version=str(meta.get("gameVersion") or meta.get("game_version") or "") or None,
         game_length_ms=length_ms_i,
@@ -123,7 +218,7 @@ def _overview_from_meta(path: Path, meta: dict[str, Any], fmt: str) -> RoflOverv
         player_count=len(stats) if stats else None,
         players=players[:10],
         size_bytes=path.stat().st_size,
-        note=None,
+        note=note,
         raw_keys=sorted(meta.keys()),
     )
 
@@ -138,10 +233,12 @@ def inspect_rofl(path: Path) -> RoflOverview:
     data = path.read_bytes()
     magic = data[:4]
     if magic != b"RIOT":
+        filename_id = parse_match_id_from_filename(path)
         return RoflOverview(
             path=str(path),
             filename=path.name,
-            match_id=parse_match_id_from_filename(path),
+            match_id=filename_id,
+            match_id_source="filename" if filename_id else None,
             size_bytes=path.stat().st_size,
             note="Unrecognized ROFL magic; only filename metadata available",
         )
@@ -151,10 +248,12 @@ def inspect_rofl(path: Path) -> RoflOverview:
         meta = _read_classic_rofl_metadata(data)
         if meta:
             return _overview_from_meta(path, meta, "ROFL")
+        filename_id = parse_match_id_from_filename(path)
         return RoflOverview(
             path=str(path),
             filename=path.name,
-            match_id=parse_match_id_from_filename(path),
+            match_id=filename_id,
+            match_id_source="filename" if filename_id else None,
             format="ROFL",
             size_bytes=path.stat().st_size,
             note="Classic ROFL header found but metadata JSON could not be parsed",
@@ -164,10 +263,12 @@ def inspect_rofl(path: Path) -> RoflOverview:
     meta = _read_rofl2_trailing_metadata(data) or _read_classic_rofl_metadata(data)
     if meta:
         return _overview_from_meta(path, meta, "ROFL2")
+    filename_id = parse_match_id_from_filename(path)
     return RoflOverview(
         path=str(path),
         filename=path.name,
-        match_id=parse_match_id_from_filename(path),
+        match_id=filename_id,
+        match_id_source="filename" if filename_id else None,
         format="ROFL2",
         size_bytes=path.stat().st_size,
         note="ROFL2 metadata unavailable (e.g. patch 14.9–14.10) or unreadable",

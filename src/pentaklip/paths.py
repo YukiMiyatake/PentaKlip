@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -101,3 +102,76 @@ def resolve_game_dir(base_dir: Path | str, game_id: str) -> Path:
     """Return ``{base}/{game_id}`` (created by callers as needed)."""
     base = Path(base_dir).expanduser()
     return (base / sanitize_game_id(game_id)).resolve()
+
+
+def _events_meta_game_id(folder: Path) -> str | None:
+    events = folder / "events.json"
+    if not events.is_file():
+        return None
+    try:
+        loaded = json.loads(events.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    meta = loaded.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    raw = meta.get("game_id")
+    return str(raw) if raw else None
+
+
+def allocate_game_dir(
+    base_dir: Path | str,
+    game_id: str,
+    *,
+    reuse_matching: bool = True,
+) -> Path:
+    """
+    Resolve ``{base}/{game_id}``, or ``{game_id}-1`` / ``-2`` / ... on collision.
+
+    Reuses an existing folder when empty, or when events.json meta.game_id matches.
+    If another game already occupies the name, allocate the next free ``-N`` suffix.
+    """
+    base = Path(base_dir).expanduser().resolve()
+    safe = sanitize_game_id(game_id)
+    primary = base / safe
+    if not primary.exists():
+        return primary
+
+    if reuse_matching:
+        try:
+            entries = list(primary.iterdir())
+        except OSError:
+            entries = ["?"]
+        if not entries:
+            return primary
+        meta_gid = _events_meta_game_id(primary)
+        if meta_gid is None or meta_gid in {safe, game_id}:
+            return primary
+
+    index = 1
+    while True:
+        candidate = base / f"{safe}-{index}"
+        if not candidate.exists():
+            return candidate
+        if reuse_matching:
+            meta_gid = _events_meta_game_id(candidate)
+            if meta_gid is None or meta_gid in {safe, game_id, f"{safe}-{index}"}:
+                return candidate
+        index += 1
+
+
+def unique_file_path(path: Path) -> Path:
+    """If ``path`` exists, return ``stem-1.ext``, ``stem-2.ext``, ..."""
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    parent = path.parent
+    index = 1
+    while True:
+        candidate = parent / f"{stem}-{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
