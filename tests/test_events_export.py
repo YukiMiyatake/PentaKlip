@@ -57,21 +57,26 @@ def test_extract_events_shapes() -> None:
 
 
 def test_build_and_export_events_json(tmp_path: Path) -> None:
-    doc = build_events_document(SAMPLE_EVENTS, game_time_sec=310.0)
+    doc = build_events_document(SAMPLE_EVENTS, game_time_sec=310.0, game_id="JP1-1")
     assert "Events" in doc
     assert doc["meta"]["event_count"] == 3
+    assert doc["meta"]["game_id"] == "JP1-1"
 
     result = export_events_json(
         directory=str(tmp_path),
-        filename="match_events.json",
+        filename="events.json",
         events=SAMPLE_EVENTS,
+        game_id="JP1-123456",
         game_time_sec=310.0,
     )
     path = Path(result.path)
+    assert path == (tmp_path / "JP1-123456" / "events.json").resolve()
     assert path.is_file()
     loaded = json.loads(path.read_text(encoding="utf-8"))
     assert loaded["Events"][1]["EventName"] == "ChampionKill"
+    assert loaded["meta"]["game_id"] == "JP1-123456"
     assert result.event_count == 3
+    assert result.game_id == "JP1-123456"
 
 
 def test_fetch_live_events_unavailable() -> None:
@@ -89,12 +94,12 @@ def test_fetch_live_events_ok() -> None:
 
 def test_api_export_with_provided_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PENTAKLIP_DATA_DIR", str(tmp_path / "data"))
-    out = tmp_path / "out" / "events.json"
     client = TestClient(app)
     response = client.post(
         "/api/events/export",
         json={
-            "output_path": str(out),
+            "directory": str(tmp_path / "matches"),
+            "game_id": "KR-999",
             "events": SAMPLE_EVENTS,
             "game_time_sec": 200.0,
         },
@@ -102,6 +107,8 @@ def test_api_export_with_provided_events(tmp_path: Path, monkeypatch: pytest.Mon
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["event_count"] == 3
+    assert body["game_id"] == "KR-999"
+    assert Path(body["path"]) == (tmp_path / "matches" / "KR-999" / "events.json").resolve()
     assert Path(body["path"]).is_file()
 
 

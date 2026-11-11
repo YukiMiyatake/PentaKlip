@@ -84,6 +84,8 @@ export type UiPreferences = {
   last_source_dir: string | null;
   last_video_dir: string | null;
   last_events_dir: string | null;
+  last_output_root: string | null;
+  last_game_id: string | null;
 };
 
 export type FsEntry = {
@@ -114,6 +116,7 @@ export type EventsLiveStatus = {
   events: Record<string, unknown>[];
   event_count: number;
   game_time_sec?: number | null;
+  game_id?: string | null;
   source: string;
   error?: string | null;
 };
@@ -121,6 +124,8 @@ export type EventsLiveStatus = {
 export type EventsExportResult = {
   path: string;
   event_count: number;
+  game_id: string;
+  game_dir: string;
   game_time_sec?: number | null;
   source: string;
 };
@@ -137,4 +142,5 @@ export type CreateClipsResponse = {
     end_sec: number;
     output_path: string;
   }>;
+  game_id?: string | null;
 };

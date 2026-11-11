@@ -98,6 +98,7 @@ class CreateClipsResponse(BaseModel):
     output_dir: str
     clip_count: int
     clips: list[CreatedClipItem]
+    game_id: str | None = None
 
 
 class StartStatsSessionRequest(BaseModel):
@@ -143,6 +144,8 @@ class UiPreferencesModel(BaseModel):
     last_source_dir: str | None = None
     last_video_dir: str | None = None
     last_events_dir: str | None = None
+    last_output_root: str | None = None
+    last_game_id: str | None = None
 
 
 class ListDirRequest(BaseModel):
@@ -166,6 +169,7 @@ class ExportEventsRequest(BaseModel):
     directory: str | None = None
     filename: str | None = None
     events: list[dict] | None = None
+    game_id: str | None = None
     game_time_sec: float | None = None
     source: str = "liveclientdata"
 
@@ -173,5 +177,7 @@ class ExportEventsRequest(BaseModel):
 class ExportEventsResponse(BaseModel):
     path: str
     event_count: int
+    game_id: str
+    game_dir: str
     game_time_sec: float | None = None
     source: str = "liveclientdata"

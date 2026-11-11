@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from pentaklip.paths import extract_game_id_from_live_payload, resolve_game_dir, sanitize_game_id
 from pentaklip.record.live_client import LiveClientClient
 
 
@@ -21,6 +22,7 @@ class EventsLiveStatus(BaseModel):
     events: list[dict[str, Any]] = Field(default_factory=list)
     event_count: int = 0
     game_time_sec: float | None = None
+    game_id: str | None = None
     source: str = "liveclientdata"
     error: str | None = None
 
@@ -28,6 +30,8 @@ class EventsLiveStatus(BaseModel):
 class EventsExportResult(BaseModel):
     path: str
     event_count: int
+    game_id: str
+    game_dir: str
     game_time_sec: float | None = None
     source: str = "liveclientdata"
 
@@ -81,14 +85,19 @@ def fetch_live_events(client: LiveClientClient | None = None) -> EventsLiveStatu
             error="Live Client is not available. Start a LoL replay or game first.",
         )
     try:
-        # Prefer eventdata (lighter); fall back to allgamedata for game time.
+        # Prefer eventdata (lighter); enrich with allgamedata for time / game id.
         event_payload = live.get_event_data()
         events = extract_events_from_payload(event_payload)
         game_time = extract_game_time_sec(event_payload)
-        if game_time is None:
+        game_id = extract_game_id_from_live_payload(event_payload)
+        all_data: dict[str, Any] | None = None
+        if game_time is None or game_id is None or not events:
             try:
                 all_data = live.get_all_game_data()
-                game_time = extract_game_time_sec(all_data)
+                if game_time is None:
+                    game_time = extract_game_time_sec(all_data)
+                if game_id is None:
+                    game_id = extract_game_id_from_live_payload(all_data)
                 if not events:
                     events = extract_events_from_payload(all_data)
             except Exception as enrich_exc:  # noqa: BLE001 - optional enrichment
@@ -98,6 +107,7 @@ def fetch_live_events(client: LiveClientClient | None = None) -> EventsLiveStatu
             events=events,
             event_count=len(events),
             game_time_sec=game_time,
+            game_id=game_id,
             source="liveclientdata",
         )
     except Exception as exc:  # noqa: BLE001 - surface as status for UI
@@ -111,6 +121,7 @@ def build_events_document(
     events: list[dict[str, Any]],
     *,
     game_time_sec: float | None = None,
+    game_id: str | None = None,
     source: str = "liveclientdata",
     extra_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -121,6 +132,8 @@ def build_events_document(
     }
     if game_time_sec is not None:
         meta["game_time_sec"] = game_time_sec
+    if game_id:
+        meta["game_id"] = game_id
     if extra_meta:
         meta.update(extra_meta)
     # Capital-E Events matches Live Client eventdata and auto-split loader.
@@ -132,18 +145,24 @@ def resolve_export_path(
     output_path: str | None = None,
     directory: str | None = None,
     filename: str | None = None,
+    game_id: str | None = None,
     game_time_sec: float | None = None,
     default_dir: Path | None = None,
 ) -> Path:
     if output_path:
-        path = Path(output_path).expanduser()
+        return Path(output_path).expanduser().resolve()
+
+    root = Path(directory).expanduser() if directory else (default_dir or Path.cwd())
+    base = resolve_game_dir(root, game_id) if game_id else root.resolve()
+    if filename:
+        name = filename
+    elif game_id:
+        name = "events.json"
     else:
-        base = Path(directory).expanduser() if directory else (default_dir or Path.cwd())
-        name = filename or suggest_events_filename(game_time_sec=game_time_sec)
-        if not name.lower().endswith(".json"):
-            name = f"{name}.json"
-        path = base / name
-    return path.resolve()
+        name = suggest_events_filename(game_time_sec=game_time_sec)
+    if not name.lower().endswith(".json"):
+        name = f"{name}.json"
+    return (base / name).resolve()
 
 
 def export_events_json(
@@ -152,6 +171,7 @@ def export_events_json(
     directory: str | None = None,
     filename: str | None = None,
     events: list[dict[str, Any]] | None = None,
+    game_id: str | None = None,
     game_time_sec: float | None = None,
     source: str = "liveclientdata",
     client: LiveClientClient | None = None,
@@ -160,11 +180,13 @@ def export_events_json(
     """
     Write events to a JSON file compatible with /api/clips/auto-split.
 
-    If ``events`` is omitted, fetch from Live Client.
+    Files are stored under ``{directory|default}/{game_id}/`` unless ``output_path``
+    is an explicit file path. If ``events`` is omitted, fetch from Live Client.
     """
     resolved_events = list(events) if events is not None else None
     resolved_time = game_time_sec
     resolved_source = source
+    resolved_game_id = sanitize_game_id(game_id) if game_id else None
 
     if resolved_events is None:
         status = fetch_live_events(client)
@@ -173,25 +195,38 @@ def export_events_json(
         resolved_events = status.events
         if resolved_time is None:
             resolved_time = status.game_time_sec
+        if resolved_game_id is None and status.game_id:
+            resolved_game_id = sanitize_game_id(status.game_id)
         resolved_source = status.source
+
+    if resolved_game_id is None and output_path is None:
+        raise ValueError("game_id is required to create a game folder (or pass output_path)")
 
     path = resolve_export_path(
         output_path=output_path,
         directory=directory,
         filename=filename,
+        game_id=resolved_game_id,
         game_time_sec=resolved_time,
         default_dir=default_dir,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
+    # If only output_path was given, still record folder name as game id when possible.
+    if resolved_game_id is None:
+        resolved_game_id = sanitize_game_id(path.parent.name)
+
     document = build_events_document(
         resolved_events,
         game_time_sec=resolved_time,
+        game_id=resolved_game_id,
         source=resolved_source,
     )
     path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
     return EventsExportResult(
         path=str(path),
         event_count=len(resolved_events),
+        game_id=resolved_game_id,
+        game_dir=str(path.parent),
         game_time_sec=resolved_time,
         source=resolved_source,
     )
