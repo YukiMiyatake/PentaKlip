@@ -53,6 +53,14 @@ src/pentaklip/
   replay/    .rofl 配置・元マッチ ID
   detect/    ハイライト検出
   record/    Replay / Live Client API
+  stats/     スタッツ収集 / 集計 / グラフ（分離）
   export/    ffmpeg 切り出し
   store/     SQLite
 ```
+
+## スタッツ API（概要）
+
+- `POST /api/stats/sessions` → ingest/poll → finalize（JSON/YAML 出力可）
+- `POST /api/stats/aggregate` … 集計のみ
+- `POST /api/stats/charts` … グラフ化のみ（集計結果 + レーン別表示設定）
+- `GET/PUT /api/stats/display-settings` … レーンごとに表示するスタッツを設定

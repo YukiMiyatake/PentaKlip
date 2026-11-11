@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 from pentaklip.detect.models import HighlightCandidate
+from pentaklip.stats.display import DisplaySettings
+from pentaklip.stats.models import AggregatedReplayStats, ChartBundle, ReplayStatsBundle
 
 
 class HealthResponse(BaseModel):
@@ -35,3 +39,41 @@ class DetectRequest(BaseModel):
 
 class DetectResponse(BaseModel):
     highlights: list[HighlightCandidate]
+
+
+class StartStatsSessionRequest(BaseModel):
+    original_match_id: str | None = None
+    local_replay_id: str | None = None
+    source_filename: str | None = None
+    sample_interval_sec: float = 5.0
+
+
+class StartStatsSessionResponse(BaseModel):
+    session_id: str
+
+
+class IngestStatsRequest(BaseModel):
+    all_game_data: dict[str, Any]
+
+
+class FinalizeStatsRequest(BaseModel):
+    export_path: str | None = None
+    export_format: Literal["json", "yaml"] = "json"
+    build_charts: bool = True
+
+
+class FinalizeStatsResponse(BaseModel):
+    bundle: ReplayStatsBundle
+    aggregated: AggregatedReplayStats
+    charts: ChartBundle | None = None
+    export_path: str | None = None
+
+
+class AggregateStatsRequest(BaseModel):
+    bundle: ReplayStatsBundle | None = None
+    bundle_path: str | None = None
+
+
+class ChartsRequest(BaseModel):
+    aggregated: AggregatedReplayStats
+    display: DisplaySettings | None = None
