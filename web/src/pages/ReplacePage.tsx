@@ -40,8 +40,12 @@ export function ReplacePage() {
           (local[0] ? local[0].path.replace(/[^\\/]+$/, "") : "");
         if (dir) {
           setSourceDir(dir);
-          const listed = await listDir(dir, [".rofl"]);
-          if (!cancelled) setEntries(listed.entries);
+          try {
+            const listed = await listDir(dir, [".rofl"]);
+            if (!cancelled) setEntries(listed.entries);
+          } catch {
+            // Keep remembered path even if the folder is temporarily missing.
+          }
         }
       } catch (err) {
         if (!cancelled) setError(String(err));
@@ -57,15 +61,30 @@ export function ReplacePage() {
     setPrefs(saved);
   }
 
+  async function rememberPrefs(partial: Partial<UiPreferences>) {
+    const base = prefs ?? (await getUiPreferences());
+    const next: UiPreferences = { ...base, ...partial };
+    const unchanged =
+      next.fixed_target_rofl === base.fixed_target_rofl &&
+      next.last_source_dir === base.last_source_dir &&
+      next.last_video_dir === base.last_video_dir &&
+      next.last_events_dir === base.last_events_dir &&
+      next.last_output_root === base.last_output_root &&
+      next.last_game_id === base.last_game_id;
+    if (unchanged) {
+      setPrefs(base);
+      return base;
+    }
+    return persist(next);
+  }
+
   async function onSelectTarget(path: string) {
     setError(null);
     setTargetPath(path);
     try {
       const overview = await inspectRofl(path);
       setTargetOverview(overview);
-      if (prefs) {
-        await persist({ ...prefs, fixed_target_rofl: path });
-      }
+      await rememberPrefs({ fixed_target_rofl: path });
       setMessage("置き換え先を固定しました（選び直すまで維持）");
     } catch (err) {
       setError(String(err));
@@ -80,9 +99,7 @@ export function ReplacePage() {
       const listed = await listDir(sourceDir.trim(), [".rofl"]);
       setEntries(listed.entries);
       setSourceDir(listed.directory);
-      if (prefs) {
-        await persist({ ...prefs, last_source_dir: listed.directory });
-      }
+      await rememberPrefs({ last_source_dir: listed.directory });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -166,6 +183,11 @@ export function ReplacePage() {
               className="text-input grow"
               value={sourceDir}
               onChange={(e) => setSourceDir(e.target.value)}
+              onBlur={() => {
+                const dir = sourceDir.trim();
+                if (!dir) return;
+                rememberPrefs({ last_source_dir: dir }).catch((err) => setError(String(err)));
+              }}
               placeholder="C:\Users\...\Downloads"
             />
             <button className="btn" disabled={busy} onClick={onLoadSourceDir}>
