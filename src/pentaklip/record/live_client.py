@@ -24,16 +24,18 @@ class LiveClientClient:
             response.raise_for_status()
             return response.json()
 
-    def get_event_data(self, *, seek: int | None = 0) -> dict[str, Any]:
+    def get_event_data(self, *, event_id: int | None = 0) -> dict[str, Any]:
         """
         Fetch events from Live Client.
 
-        ``seek`` is the next EventID you expect. ``0`` asks for the history from
-        the start (events with time <= current game time still apply in replay).
+        ``event_id`` maps to the Riot query param ``eventID`` (next EventID you
+        expect). ``0`` returns history from the start; omit with ``None`` for
+        the default payload. In replay, only EventTime <= current game time
+        is included.
         """
         params: dict[str, int] = {}
-        if seek is not None:
-            params["seek"] = seek
+        if event_id is not None:
+            params["eventID"] = event_id
         with self._client() as client:
             response = client.get("/liveclientdata/eventdata", params=params or None)
             response.raise_for_status()
