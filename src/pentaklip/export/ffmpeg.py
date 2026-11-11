@@ -57,5 +57,9 @@ def cut_clip(
         "copy",
         str(output),
     ]
-    subprocess.run(command, check=True, capture_output=True)
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        raise RuntimeError(f"ffmpeg failed: {detail or exc}") from exc
     return ExportResult(output_path=output, command=command)

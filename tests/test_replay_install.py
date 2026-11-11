@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from pentaklip.replay.install import install_replay, parse_match_id_from_filename
+from pentaklip.replay.install import InstallMode, install_replay, parse_match_id_from_filename
 
 
 def test_parse_match_id_from_filename() -> None:
@@ -27,6 +27,7 @@ def test_install_replay_copy_and_preserve_original_id(tmp_path: Path) -> None:
     assert result.installed_path == replays_dir / "JP1-111.rofl"
     assert result.installed_path.read_bytes() == b"rofl-bytes"
     assert result.overwritten is False
+    assert result.mode == InstallMode.COPY
 
 
 def test_install_replay_rejects_missing(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +16,9 @@ from pentaklip import __version__
 from pentaklip.api.schemas import (
     AggregateStatsRequest,
     ChartsRequest,
+    CreateClipsRequest,
+    CreateClipsResponse,
+    CreatedClipItem,
     DetectRequest,
     DetectResponse,
     FinalizeStatsRequest,
@@ -23,12 +27,19 @@ from pentaklip.api.schemas import (
     IngestStatsRequest,
     InstallReplayRequest,
     InstallReplayResponse,
+    LocalReplayItem,
+    ParseMatchIdResponse,
     StartStatsSessionRequest,
     StartStatsSessionResponse,
 )
+from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
 from pentaklip.detect.service import detect_from_events
-from pentaklip.replay.install import install_replay
+from pentaklip.replay.install import (
+    install_replay,
+    list_local_replays,
+    parse_match_id_from_filename,
+)
 from pentaklip.stats.aggregate import aggregate_replay
 from pentaklip.stats.catalog import (
     SERIES_STAT_KEYS,
@@ -82,11 +93,13 @@ def health() -> HealthResponse:
 
 @app.post("/api/replays/install", response_model=InstallReplayResponse)
 def api_install_replay(body: InstallReplayRequest) -> InstallReplayResponse:
+    replays_dir = Path(body.replays_dir) if body.replays_dir else settings.lol_replays_dir
     try:
         result = install_replay(
             Path(body.source_path),
             local_replay_id=body.local_replay_id,
-            replays_dir=settings.lol_replays_dir,
+            replays_dir=replays_dir,
+            mode=body.mode,
             dry_run=body.dry_run,
         )
     except FileNotFoundError as exc:
@@ -110,12 +123,37 @@ def api_install_replay(body: InstallReplayRequest) -> InstallReplayResponse:
         local_replay_id=result.local_replay_id,
         installed_path=str(result.installed_path),
         overwritten=result.overwritten,
+        mode=result.mode,
     )
 
 
 @app.get("/api/replays")
 def api_list_replays() -> list[dict]:
     return get_database().list_replays()
+
+
+@app.get("/api/replays/local", response_model=list[LocalReplayItem])
+def api_list_local_replays() -> list[LocalReplayItem]:
+    items = list_local_replays(settings.lol_replays_dir)
+    return [
+        LocalReplayItem(
+            path=str(item.path),
+            filename=item.filename,
+            match_id=item.match_id,
+            size_bytes=item.size_bytes,
+        )
+        for item in items
+    ]
+
+
+@app.get("/api/replays/parse-id", response_model=ParseMatchIdResponse)
+def api_parse_match_id(path: str) -> ParseMatchIdResponse:
+    p = Path(path)
+    return ParseMatchIdResponse(
+        path=str(p),
+        match_id=parse_match_id_from_filename(p),
+        stem=p.stem,
+    )
 
 
 @app.post("/api/detect", response_model=DetectResponse)
@@ -136,6 +174,92 @@ def api_detect(body: DetectRequest) -> DetectResponse:
         padding_after_sec=after,
     )
     return DetectResponse(highlights=highlights)
+
+
+@app.post("/api/clips/create", response_model=CreateClipsResponse)
+def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
+    before = (
+        body.padding_before_sec
+        if body.padding_before_sec is not None
+        else settings.clip_padding_before_sec
+    )
+    after = (
+        body.padding_after_sec
+        if body.padding_after_sec is not None
+        else settings.clip_padding_after_sec
+    )
+    output_dir = Path(body.output_dir) if body.output_dir else settings.resolved_clips_dir()
+    manual = [
+        ClipSegment(
+            kind=seg.kind,
+            game_time_sec=seg.game_time_sec if seg.game_time_sec is not None else seg.start_sec,
+            start_sec=seg.start_sec,
+            end_sec=seg.end_sec,
+            label=seg.label,
+        )
+        for seg in body.segments
+    ]
+    try:
+        result = create_clips(
+            Path(body.source_video_path),
+            output_dir=output_dir,
+            events=body.events or None,
+            highlights=body.highlights or None,
+            segments=manual or None,
+            padding_before_sec=before,
+            padding_after_sec=after,
+            dry_run=body.dry_run,
+            match_id=body.original_match_id,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    clip_items: list[CreatedClipItem] = []
+    db = get_database()
+    for clip in result.clips:
+        highlight_db_id: int | None = None
+        export_db_id: int | None = None
+        if not body.dry_run and body.replay_db_id is not None:
+            highlight_db_id = db.insert_highlight(
+                replay_id=body.replay_db_id,
+                kind=clip.segment.kind,
+                game_time_sec=clip.segment.game_time_sec,
+                start_sec=clip.segment.start_sec,
+                end_sec=clip.segment.end_sec,
+                payload_json=json.dumps({"label": clip.segment.label}),
+            )
+            export_db_id = db.insert_export(
+                highlight_id=highlight_db_id,
+                output_path=str(clip.output_path),
+            )
+        clip_items.append(
+            CreatedClipItem(
+                kind=clip.segment.kind,
+                label=clip.segment.label,
+                game_time_sec=clip.segment.game_time_sec,
+                start_sec=clip.segment.start_sec,
+                end_sec=clip.segment.end_sec,
+                output_path=str(clip.output_path),
+                highlight_db_id=highlight_db_id,
+                export_db_id=export_db_id,
+            )
+        )
+
+    return CreateClipsResponse(
+        source_video=str(result.source_video),
+        output_dir=str(result.output_dir),
+        clip_count=len(clip_items),
+        clips=clip_items,
+    )
+
+
+@app.get("/api/clips")
+def api_list_clips() -> list[dict]:
+    return get_database().list_exports()
 
 
 @app.get("/api/stats/catalog")

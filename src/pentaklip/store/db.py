@@ -89,6 +89,60 @@ class Database:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def insert_highlight(
+        self,
+        *,
+        replay_id: int,
+        kind: str,
+        game_time_sec: float,
+        start_sec: float,
+        end_sec: float,
+        payload_json: str | None = None,
+    ) -> int:
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO highlights (
+                    replay_id, kind, game_time_sec, start_sec, end_sec, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    replay_id,
+                    kind,
+                    game_time_sec,
+                    start_sec,
+                    end_sec,
+                    payload_json,
+                    _utc_now(),
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def insert_export(self, *, highlight_id: int, output_path: str) -> int:
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO exports (highlight_id, output_path, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (highlight_id, output_path, _utc_now()),
+            )
+            return int(cur.lastrowid)
+
+    def list_exports(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT e.*, h.kind, h.game_time_sec, h.start_sec, h.end_sec
+                FROM exports e
+                JOIN highlights h ON h.id = e.highlight_id
+                ORDER BY e.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
 
 _db: Database | None = None
 
