@@ -109,6 +109,22 @@ export type FfmpegStatus = {
   hints: string[];
 };
 
+export type EventsLiveStatus = {
+  available: boolean;
+  events: Record<string, unknown>[];
+  event_count: number;
+  game_time_sec?: number | null;
+  source: string;
+  error?: string | null;
+};
+
+export type EventsExportResult = {
+  path: string;
+  event_count: number;
+  game_time_sec?: number | null;
+  source: string;
+};
+
 export type CreateClipsResponse = {
   source_video: string;
   output_dir: string;

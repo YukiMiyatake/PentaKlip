@@ -107,6 +107,22 @@ npm run build
 |--------|------|
 | Tauri デスクトップ殻 | 未実装（正式配布時。同じ React UI を包む想定） |
 
+## 自動クリップ切り分け
+
+前提: 試合の録画ファイル、イベント JSON、ffmpeg
+
+1. WebUI「ffmpeg」タブで導入 / PATH 追加
+2. LoL リプレイを再生した状態で「自動切り分け」タブの **イベント JSON 作成** から保存
+   （Live Client `127.0.0.1:2999` のイベントを取得。終盤に一度保存で OK）
+3. 同じタブで動画と events JSON を選択
+4. ドライラン → 実行
+
+API:
+
+- `GET /api/events/live` … 現在の Live Client イベント
+- `POST /api/events/export` … イベント JSON 保存（`{ "Events": [...], "meta": {...} }`）
+- `POST /api/clips/auto-split` … 検出 + 切り出し
+
 ## パッケージ構成
 
 ```text
@@ -115,7 +131,9 @@ src/pentaklip/
   replay/    .rofl リネーム / 配置・元マッチ ID
   detect/    ハイライト検出
   clips/     クリップ作成ジョブ
+  events/    Live Client イベント JSON 出力
   record/    Replay / Live Client API
+  tools/     ffmpeg セットアップ
   stats/     スタッツ収集 / 集計 / グラフ（分離）
   export/    ffmpeg 切り出し
   store/     SQLite
