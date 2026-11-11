@@ -200,4 +200,5 @@ class ExportEventsResponse(BaseModel):
 class FfmpegSettingsModel(BaseModel):
     ffmpeg_path: str | None = None
     quality: Literal["light", "standard", "high"] = "standard"
+    encoder: Literal["auto", "nvenc", "qsv", "amf", "cpu"] = "auto"
     auto_convert_webm: bool = True

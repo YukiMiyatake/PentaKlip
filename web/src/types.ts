@@ -114,10 +114,16 @@ export type FfmpegStatus = {
 
 export type FfmpegQuality = "light" | "standard" | "high";
 
+export type FfmpegEncoder = "auto" | "nvenc" | "qsv" | "amf" | "cpu";
+
 export type FfmpegSettings = {
   ffmpeg_path: string | null;
   quality: FfmpegQuality;
+  encoder: FfmpegEncoder;
   auto_convert_webm: boolean;
+  available_encoders?: FfmpegEncoder[];
+  effective_encoder?: FfmpegEncoder;
+  effective_codec?: string;
 };
 
 export type EventsLiveStatus = {
