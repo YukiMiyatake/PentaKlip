@@ -142,6 +142,11 @@ class AggregateStatsRequest(BaseModel):
     bundle_path: str | None = None
 
 
+class AggregateFolderStatsRequest(BaseModel):
+    directory: str
+    apply_roster: bool = True
+
+
 class ChartsRequest(BaseModel):
     aggregated: AggregatedReplayStats
     display: DisplaySettings | None = None

@@ -83,7 +83,7 @@ def test_build_and_export_events_json(tmp_path: Path) -> None:
         game_time_sec=310.0,
     )
     path = Path(result.path)
-    assert path == (tmp_path / "JP1-123456" / "events.json").resolve()
+    assert path == (tmp_path / "JP1-123456" / "JP1-123456_events.json").resolve()
     assert path.is_file()
     loaded = json.loads(path.read_text(encoding="utf-8"))
     assert loaded["Events"][1]["EventName"] == "ChampionKill"
@@ -156,7 +156,7 @@ def test_api_export_with_provided_events(tmp_path: Path, monkeypatch: pytest.Mon
     body = response.json()
     assert body["event_count"] == 3
     assert body["game_id"] == "KR-999"
-    assert Path(body["path"]) == (tmp_path / "matches" / "KR-999" / "events.json").resolve()
+    assert Path(body["path"]) == (tmp_path / "matches" / "KR-999" / "KR-999_events.json").resolve()
     assert Path(body["path"]).is_file()
 
 

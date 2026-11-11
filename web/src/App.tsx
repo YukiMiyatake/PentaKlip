@@ -45,7 +45,7 @@ export default function App() {
             ["autosplit", "自動切り分け"],
             ["tools", "ffmpeg"],
             ["viewer", "スタッツ"],
-            ["settings", "表示設定"],
+            ["settings", "スタッツ設定"],
           ] as const
         ).map(([id, label]) => (
           <button

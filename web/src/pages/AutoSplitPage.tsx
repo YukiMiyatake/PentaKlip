@@ -195,8 +195,12 @@ export function AutoSplitPage() {
         include_stats: includeStats,
       });
       const statsBits = [
-        response.stats_bundle_path ? "stats_bundle.json" : null,
-        response.stats_aggregated_path ? "stats_aggregated.json" : null,
+        response.stats_bundle_path
+          ? response.stats_bundle_path.replace(/^.*[/\\]/, "")
+          : null,
+        response.stats_aggregated_path
+          ? response.stats_aggregated_path.replace(/^.*[/\\]/, "")
+          : null,
       ].filter(Boolean);
       setExportNote(
         `保存しました: ${response.path}（${response.event_count} イベント / ${response.game_id}）` +

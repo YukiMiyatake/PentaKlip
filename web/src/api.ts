@@ -50,6 +50,22 @@ export function resetDisplaySettings(): Promise<DisplaySettings> {
   return request("/api/stats/display-settings/reset", { method: "POST" });
 }
 
+export function aggregateStatsFolder(body: {
+  directory: string;
+  apply_roster?: boolean;
+}): Promise<{
+  directory: string;
+  file_count: number;
+  files: string[];
+  game_count: number;
+  aggregated: AggregatedReplayStats;
+}> {
+  return request("/api/stats/aggregate-folder", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export function buildCharts(
   aggregated: AggregatedReplayStats,
   display?: DisplaySettings | null,

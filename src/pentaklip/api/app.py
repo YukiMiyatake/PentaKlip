@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pentaklip import __version__
 from pentaklip.api.schemas import (
+    AggregateFolderStatsRequest,
     AggregateStatsRequest,
     AutoSplitRequest,
     ChartsRequest,
@@ -73,6 +74,7 @@ from pentaklip.stats.display import (
     validate_display_settings,
 )
 from pentaklip.stats.export import export_replay_stats, load_replay_stats
+from pentaklip.stats.folder_aggregate import aggregate_stats_folder
 from pentaklip.stats.models import AggregatedReplayStats, ChartBundle
 from pentaklip.stats.sessions import create_session, get_session, pop_session
 from pentaklip.store.db import get_database
@@ -680,6 +682,21 @@ def api_aggregate_stats(body: AggregateStatsRequest) -> AggregatedReplayStats:
     if body.bundle_path:
         return aggregate_replay(load_replay_stats(Path(body.bundle_path)))
     raise HTTPException(status_code=400, detail="Provide bundle or bundle_path")
+
+
+@app.post("/api/stats/aggregate-folder")
+def api_aggregate_stats_folder(body: AggregateFolderStatsRequest) -> dict:
+    """Average all stats JSON files in a folder; apply lane roster fuzzy matching."""
+    roster = None
+    if body.apply_roster:
+        roster = load_display_settings(settings.data_dir).roster_by_position
+    try:
+        result = aggregate_stats_folder(body.directory, roster_by_position=roster)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except NotADirectoryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.model_dump(mode="json")
 
 
 @app.post("/api/stats/charts", response_model=ChartBundle)
