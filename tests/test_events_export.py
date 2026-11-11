@@ -38,7 +38,8 @@ class FakeLiveClient:
     def is_available(self) -> bool:
         return self.available
 
-    def get_event_data(self) -> dict:
+    def get_event_data(self, *, seek: int | None = 0) -> dict:
+        _ = seek
         return {"Events": SAMPLE_EVENTS}
 
     def get_all_game_data(self) -> dict:

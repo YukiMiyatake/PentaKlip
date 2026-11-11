@@ -89,23 +89,37 @@ def fetch_live_events(client: LiveClientClient | None = None) -> EventsLiveStatu
             error="Live Client is not available. Start a LoL replay or game first.",
         )
     try:
-        # Prefer eventdata (lighter); enrich with allgamedata for time / game id.
-        event_payload = live.get_event_data()
-        events = extract_events_from_payload(event_payload)
+        # seek=0 requests history from the first event id.
+        # In replay, Live Client still only includes EventTime <= current game time.
+        event_payload = live.get_event_data(seek=0)
+        events_by_key: dict[int | str, dict[str, Any]] = {}
+
+        def _key(event: dict[str, Any]) -> int | str:
+            event_id = event.get("EventID", event.get("EventId", event.get("eventId")))
+            if event_id is not None:
+                return event_id
+            return f"{event.get('EventName')}:{event.get('EventTime')}"
+
+        for event in extract_events_from_payload(event_payload):
+            events_by_key[_key(event)] = event
+
         game_time = extract_game_time_sec(event_payload)
         game_id = extract_game_id_from_live_payload(event_payload)
-        all_data: dict[str, Any] | None = None
-        if game_time is None or game_id is None or not events:
-            try:
-                all_data = live.get_all_game_data()
-                if game_time is None:
-                    game_time = extract_game_time_sec(all_data)
-                if game_id is None:
-                    game_id = extract_game_id_from_live_payload(all_data)
-                if not events:
-                    events = extract_events_from_payload(all_data)
-            except Exception as enrich_exc:  # noqa: BLE001 - optional enrichment
-                _ = enrich_exc
+        try:
+            all_data = live.get_all_game_data()
+            for event in extract_events_from_payload(all_data):
+                events_by_key[_key(event)] = event
+            if game_time is None:
+                game_time = extract_game_time_sec(all_data)
+            if game_id is None:
+                game_id = extract_game_id_from_live_payload(all_data)
+        except Exception as enrich_exc:  # noqa: BLE001 - optional enrichment
+            _ = enrich_exc
+
+        events = sorted(
+            events_by_key.values(),
+            key=lambda e: float(e.get("EventTime", e.get("eventTime") or 0.0)),
+        )
         return EventsLiveStatus(
             available=True,
             events=events,
@@ -193,15 +207,31 @@ def export_events_json(
     resolved_game_id = sanitize_game_id(game_id) if game_id else None
 
     if resolved_events is None:
-        status = fetch_live_events(client)
-        if not status.available:
-            raise RuntimeError(status.error or "Live Client unavailable")
-        resolved_events = status.events
-        if resolved_time is None:
-            resolved_time = status.game_time_sec
-        if resolved_game_id is None and status.game_id:
-            resolved_game_id = sanitize_game_id(status.game_id)
-        resolved_source = status.source
+        # Prefer an active accumulating capture session when present.
+        from pentaklip.events.sessions import get_active_events_session
+
+        active = get_active_events_session()
+        if active is not None and active.events:
+            # One more poll to catch the latest frame, then export accumulated.
+            status = active.poll()
+            if not status.available and not active.events:
+                raise RuntimeError(status.error or "Live Client unavailable")
+            resolved_events = list(active.events)
+            if resolved_time is None:
+                resolved_time = active.game_time_sec
+            if resolved_game_id is None and active.game_id:
+                resolved_game_id = sanitize_game_id(active.game_id)
+            resolved_source = "liveclientdata+accumulated"
+        else:
+            status = fetch_live_events(client)
+            if not status.available:
+                raise RuntimeError(status.error or "Live Client unavailable")
+            resolved_events = status.events
+            if resolved_time is None:
+                resolved_time = status.game_time_sec
+            if resolved_game_id is None and status.game_id:
+                resolved_game_id = sanitize_game_id(status.game_id)
+            resolved_source = status.source
 
     if resolved_game_id is None and output_path is None:
         raise ValueError("game_id is required to create a game folder (or pass output_path)")
