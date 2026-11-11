@@ -147,25 +147,8 @@ export function resetFfmpegSettings(): Promise<FfmpegSettings> {
   return request("/api/tools/ffmpeg/settings/reset", { method: "POST" });
 }
 
-export function getLiveEvents(): Promise<EventsLiveStatus & { capture?: Record<string, unknown> }> {
+export function getLiveEvents(): Promise<EventsLiveStatus> {
   return request("/api/events/live");
-}
-
-export function startEventsCapture(): Promise<{
-  session_id: string;
-  status: EventsLiveStatus;
-  capture: Record<string, unknown>;
-}> {
-  return request("/api/events/sessions", { method: "POST" });
-}
-
-export function stopEventsCapture(sessionId: string): Promise<{
-  stopped: boolean;
-  event_count: number;
-}> {
-  return request(`/api/events/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "DELETE",
-  });
 }
 
 export function exportEvents(body: {

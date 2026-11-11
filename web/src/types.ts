@@ -128,12 +128,6 @@ export type EventsLiveStatus = {
   game_id?: string | null;
   source: string;
   error?: string | null;
-  capture?: {
-    session_id?: string;
-    event_count?: number;
-    game_time_sec?: number | null;
-    poll_count?: number;
-  };
 };
 
 export type EventsExportResult = {
