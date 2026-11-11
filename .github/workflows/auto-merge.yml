@@ -16,11 +16,17 @@ permissions:
 
 jobs:
   enable-auto-merge:
-    name: Enable auto-merge when labeled
+    name: Enable auto-merge when type-labeled
     if: >
       github.event_name == 'pull_request' &&
       !github.event.pull_request.draft &&
-      contains(github.event.pull_request.labels.*.name, 'auto-merge')
+      (
+        contains(github.event.pull_request.labels.*.name, 'feature') ||
+        contains(github.event.pull_request.labels.*.name, 'fix') ||
+        contains(github.event.pull_request.labels.*.name, 'chore') ||
+        contains(github.event.pull_request.labels.*.name, 'docs') ||
+        contains(github.event.pull_request.labels.*.name, 'ci')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Enable squash auto-merge
@@ -33,14 +39,14 @@ jobs:
             --squash
 
   merge-when-green:
-    name: Merge labeled PR when CI is green
+    name: Merge type-labeled PR when CI is green
     if: >
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Find PR and merge if labeled auto-merge
+      - name: Find PR and merge if type-labeled
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -54,8 +60,15 @@ jobs:
           fi
           LABELS=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '[.labels[].name] | join(",")')
           echo "PR #$PR_NUMBER labels: $LABELS"
-          if [[ "$LABELS" != *"auto-merge"* ]]; then
-            echo "Label auto-merge not present; skip"
+          HAS_TYPE=false
+          for required in feature fix chore docs ci; do
+            if [[ ",${LABELS}," == *",${required},"* ]]; then
+              HAS_TYPE=true
+              break
+            fi
+          done
+          if [ "$HAS_TYPE" != "true" ]; then
+            echo "No type label (feature/fix/chore/docs/ci); skip"
             exit 0
           fi
           DRAFT=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft')
