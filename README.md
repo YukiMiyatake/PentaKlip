@@ -15,7 +15,15 @@ LoL リプレイからキル・集団戦などのハイライトを検出し、�
 | 動画 | ffmpeg |
 | DB | SQLite |
 
+## 開発フロー
+
+- タスクごとに `feature/<名前>` ブランチを切り、`main` へ PR する（[`.cursor/rules/pr-per-task.mdc`](.cursor/rules/pr-per-task.mdc)）
+- PR には `feature` / `fix` / `chore` / `docs` / `ci` のいずれかのラベルが必要
+- `auto-merge` ラベル付き PR は CI 成功後に squash マージされる
+- 詳細は [`.github/LABELS.md`](.github/LABELS.md)
+
 ## 開発セットアップ
+
 
 ```powershell
 python -m venv .venv

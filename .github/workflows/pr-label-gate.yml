@@ -1,0 +1,25 @@
+name: PR label gate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+jobs:
+  require-type-label:
+    name: Require type label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for feature/fix/chore/docs/ci label
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          echo "Labels: ${LABELS}"
+          for required in feature fix chore docs ci; do
+            if [[ ",${LABELS}," == *",${required},"* ]]; then
+              echo "Found required label: ${required}"
+              exit 0
+            fi
+          done
+          echo "::error::Add one of these labels: feature, fix, chore, docs, ci"
+          exit 1
