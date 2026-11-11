@@ -25,6 +25,17 @@ def sanitize_game_id(game_id: str) -> str:
     return cleaned
 
 
+def with_game_id_prefix(game_id: str, basename: str) -> str:
+    """Return ``{game_id}_{basename}`` without double-prefixing."""
+    safe = sanitize_game_id(game_id)
+    name = basename.strip()
+    if not name:
+        raise ValueError("basename must not be empty")
+    if name.lower().startswith(f"{safe.lower()}_"):
+        return name
+    return f"{safe}_{name}"
+
+
 def look_like_game_id(value: str | None) -> str | None:
     if not value:
         return None
@@ -151,20 +162,26 @@ def resolve_game_dir(base_dir: Path | str, game_id: str) -> Path:
 
 
 def _events_meta_game_id(folder: Path) -> str | None:
-    events = folder / "events.json"
-    if not events.is_file():
-        return None
-    try:
-        loaded = json.loads(events.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(loaded, dict):
-        return None
-    meta = loaded.get("meta")
-    if not isinstance(meta, dict):
-        return None
-    raw = meta.get("game_id")
-    return str(raw) if raw else None
+    candidates = sorted(folder.glob("*_events.json")) + sorted(folder.glob("events.json"))
+    for events in candidates:
+        if not events.is_file():
+            continue
+        try:
+            data = json.loads(events.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        meta = data.get("meta")
+        if not isinstance(meta, dict):
+            continue
+        raw = meta.get("game_id")
+        if raw:
+            try:
+                return sanitize_game_id(str(raw))
+            except ValueError:
+                continue
+    return None
 
 
 def allocate_game_dir(

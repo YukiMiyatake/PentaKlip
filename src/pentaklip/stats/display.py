@@ -13,13 +13,16 @@ from pentaklip.stats.catalog import (
     Position,
     StatKey,
 )
+from pentaklip.stats.roster import clean_roster_aliases
 
 
 class DisplaySettings(BaseModel):
-    """Which stats to display for each lane / position."""
+    """Which stats to display for each lane / position, plus roster aliases."""
 
     table_by_position: dict[Position, list[StatKey]] = Field(default_factory=dict)
     charts_by_position: dict[Position, list[StatKey]] = Field(default_factory=dict)
+    # Registered names per lane for fuzzy Riot-ID matching (tag ignored).
+    roster_by_position: dict[Position, list[str]] = Field(default_factory=dict)
 
 
 def default_display_settings() -> DisplaySettings:
@@ -83,7 +86,11 @@ def default_display_settings() -> DisplaySettings:
         Position.UTILITY: list(support_charts),
         Position.UNKNOWN: list(shared_charts),
     }
-    return DisplaySettings(table_by_position=table, charts_by_position=charts)
+    return DisplaySettings(
+        table_by_position=table,
+        charts_by_position=charts,
+        roster_by_position={pos: [] for pos in Position},
+    )
 
 
 def validate_display_settings(settings: DisplaySettings) -> DisplaySettings:
@@ -91,12 +98,18 @@ def validate_display_settings(settings: DisplaySettings) -> DisplaySettings:
     allowed_charts = set(SERIES_STAT_KEYS) | set(TABLE_STAT_KEYS)
     table: dict[Position, list[StatKey]] = {}
     charts: dict[Position, list[StatKey]] = {}
+    roster: dict[Position, list[str]] = {}
     for pos in Position:
         table[pos] = [k for k in settings.table_by_position.get(pos, []) if k in allowed_table]
         charts[pos] = [
             k for k in settings.charts_by_position.get(pos, []) if k in allowed_charts
         ]
-    return DisplaySettings(table_by_position=table, charts_by_position=charts)
+        roster[pos] = clean_roster_aliases(settings.roster_by_position.get(pos, []))
+    return DisplaySettings(
+        table_by_position=table,
+        charts_by_position=charts,
+        roster_by_position=roster,
+    )
 
 
 def display_settings_path(data_dir: Path) -> Path:

@@ -142,6 +142,7 @@ def ensure_mp4_source(
     force: bool = False,
     quality: EncodeQuality | None = None,
     encoder: EncodeBackend | None = None,
+    name_prefix: str | None = None,
 ) -> tuple[Path, ExportResult | None]:
     """
     Return an mp4 path suitable for clip cutting.
@@ -166,7 +167,12 @@ def ensure_mp4_source(
 
     dest_dir = cache_dir.resolve() if cache_dir is not None else source.parent
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / f"{source.stem}.mp4"
+    stem = source.stem
+    if name_prefix:
+        from pentaklip.paths import with_game_id_prefix
+
+        stem = with_game_id_prefix(name_prefix, f"{stem}.mp4").removesuffix(".mp4")
+    dest = dest_dir / f"{stem}.mp4"
     if (
         not force
         and dest.is_file()

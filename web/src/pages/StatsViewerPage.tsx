@@ -1,14 +1,58 @@
-import { useState } from "react";
-import { buildCharts } from "../api";
+import { useEffect, useState } from "react";
+import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
 import type { AggregatedReplayStats, ChartBundle } from "../types";
 
 export function StatsViewerPage() {
+  const [directory, setDirectory] = useState("");
   const [bundle, setBundle] = useState<ChartBundle | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getUiPreferences()
+      .then((p) => {
+        if (p.last_events_dir) setDirectory(p.last_events_dir);
+        else if (p.last_output_root) setDirectory(p.last_output_root);
+      })
+      .catch(() => {
+        /* optional */
+      });
+  }, []);
+
+  async function onFolderAggregate() {
+    if (!directory.trim()) {
+      setError("フォルダパスを入力してください");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setBundle(null);
+    setMeta(null);
+    try {
+      const result = await aggregateStatsFolder({
+        directory: directory.trim(),
+        apply_roster: true,
+      });
+      const charts = await buildCharts(result.aggregated);
+      setBundle(charts);
+      setMeta(
+        [
+          `folder: ${result.directory}`,
+          `games: ${result.game_count}`,
+          `files: ${result.file_count}`,
+          `duration avg: ${result.aggregated.game_duration_sec.toFixed(0)}s`,
+          `charts: ${charts.charts.length}`,
+        ].join(" · "),
+      );
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -47,9 +91,25 @@ export function StatsViewerPage() {
     <section className="panel">
       <h2>スタッツ表示</h2>
       <p className="hint">
-        finalize / aggregate で得た JSON（`aggregated` オブジェクト、または集計結果そのもの）を読み込み、
-        レーン別設定に従って表とグラフを描画します。
+        同じフォルダ内の <span className="mono">*_stats_aggregated.json</span>（なければ bundle）をすべて読み、
+        レーン登録名であいまい一致したうえで複数試合の平均を出します。単一 JSON の読み込みもできます。
       </p>
+
+      <div className="result-box" style={{ marginBottom: 16 }}>
+        <h3>フォルダから平均集計</h3>
+        <div className="row">
+          <input
+            className="text-input grow"
+            placeholder="例: D:\\PentaKlip\\matches\\scrim-0412"
+            value={directory}
+            onChange={(e) => setDirectory(e.target.value)}
+          />
+          <button className="btn primary" disabled={busy} onClick={() => onFolderAggregate()}>
+            {busy ? "集計中…" : "フォルダを集計"}
+          </button>
+        </div>
+      </div>
+
       <div className="row file-input">
         <input
           type="file"

@@ -21,6 +21,7 @@ export type Catalog = {
 export type DisplaySettings = {
   table_by_position: Partial<Record<Position, string[]>>;
   charts_by_position: Partial<Record<Position, string[]>>;
+  roster_by_position?: Partial<Record<Position, string[]>>;
 };
 
 export type TimePoint = {

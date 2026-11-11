@@ -163,6 +163,7 @@ def create_clips(
         source_video, convert_result = ensure_mp4_source(
             original_source,
             cache_dir=output_dir,
+            name_prefix=match_id,
         )
         converted = convert_result is not None
 

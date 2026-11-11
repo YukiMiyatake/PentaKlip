@@ -13,6 +13,7 @@ from pentaklip.paths import (
     allocate_game_dir,
     extract_game_id_from_live_payload,
     sanitize_game_id,
+    with_game_id_prefix,
 )
 from pentaklip.record.live_client import LiveClientClient
 from pentaklip.stats.aggregate import aggregate_replay
@@ -210,6 +211,8 @@ def resolve_export_path(
         name = suggest_events_filename(game_time_sec=game_time_sec)
     if not name.lower().endswith(".json"):
         name = f"{name}.json"
+    if game_id:
+        name = with_game_id_prefix(game_id, name)
     return (base / name).resolve()
 
 
@@ -325,11 +328,11 @@ def export_events_json(
         )
         if player_count is None:
             player_count = len(bundle.snapshots[0].players) if bundle.snapshots else None
-        bundle_path = export_replay_stats(bundle, path.parent / "stats_bundle.json")
+        stats_prefix = with_game_id_prefix(resolved_game_id, "stats_bundle.json")
+        agg_name = with_game_id_prefix(resolved_game_id, "stats_aggregated.json")
+        bundle_path = export_replay_stats(bundle, path.parent / stats_prefix)
         aggregated = aggregate_replay(bundle)
-        aggregated_path = export_aggregated_stats(
-            aggregated, path.parent / "stats_aggregated.json"
-        )
+        aggregated_path = export_aggregated_stats(aggregated, path.parent / agg_name)
         stats_bundle_path = str(bundle_path)
         stats_aggregated_path = str(aggregated_path)
 
