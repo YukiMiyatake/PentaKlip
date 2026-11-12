@@ -7,7 +7,8 @@ on:
     workflows: [CI]
     types: [completed]
   schedule:
-    # Sweep PRs that stayed open after --auto queued or went BEHIND.
+    # Sweep PRs that stayed open after --auto queued, went BEHIND, or
+    # hit action_required after github-actions update-branch.
     - cron: "*/15 * * * *"
   workflow_dispatch:
 
@@ -15,6 +16,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: read
+  actions: write
 
 jobs:
   enable-auto-merge:
@@ -85,6 +87,39 @@ jobs:
         run: |
           set -euo pipefail
           TYPE_LABELS="feature fix chore docs ci"
+
+          # github-actions update-branch commits often leave new workflow runs in
+          # action_required (no jobs). Approve + rerun so CI can report again.
+          unstick_action_required() {
+            local pr_number="$1"
+            local branch
+            branch=$(gh pr view "$pr_number" --repo "${{ github.repository }}" \
+              --json headRefName -q .headRefName)
+            local sha
+            sha=$(gh pr view "$pr_number" --repo "${{ github.repository }}" \
+              --json headRefOid -q .headRefOid)
+            echo "Unstick action_required runs on ${branch} @ ${sha}"
+            local ids
+            ids=$(gh run list --repo "${{ github.repository }}" --branch "$branch" \
+              --limit 30 --json databaseId,conclusion,headSha,status \
+              --jq --arg sha "$sha" \
+              '[.[] | select(.headSha==$sha) | select(.conclusion=="action_required" or (.status=="waiting" and .conclusion=="")) | .databaseId] | unique | .[]' \
+              || true)
+            if [ -z "${ids}" ]; then
+              echo "No action_required runs found"
+              return 0
+            fi
+            printf '%s\n' "$ids" | while IFS= read -r run_id || [ -n "$run_id" ]; do
+              run_id=$(echo "$run_id" | tr -d '[:space:]')
+              [ -z "$run_id" ] && continue
+              echo "Approve/rerun run ${run_id}"
+              gh api -X POST \
+                "repos/${{ github.repository }}/actions/runs/${run_id}/approve" \
+                >/dev/null 2>&1 || true
+              gh run rerun "$run_id" --repo "${{ github.repository }}" || true
+            done
+          }
+
           printf '%s\n' "$PR_NUMBERS" | while IFS= read -r PR_NUMBER || [ -n "$PR_NUMBER" ]; do
             PR_NUMBER=$(echo "$PR_NUMBER" | tr -d '[:space:]')
             [ -z "$PR_NUMBER" ] && continue
@@ -119,6 +154,16 @@ jobs:
               [.statusCheckRollup[]?
                 | select(.name=="CI summary")
                 | .conclusion] | first // empty')
+            CHECK_COUNT=$(echo "$META" | jq -r '[.statusCheckRollup[]?] | length')
+
+            # No checks / stuck after bot update-branch → approve+rerun and wait.
+            if [ "$CHECK_COUNT" = "0" ] || [ -z "$CI_SUMMARY" ]; then
+              echo "Missing CI checks (count=${CHECK_COUNT} summary='${CI_SUMMARY}')"
+              unstick_action_required "$PR_NUMBER"
+              echo "Skip until CI reports"
+              continue
+            fi
+
             if [ -n "$CI_SUMMARY" ] && [ "$CI_SUMMARY" != "SUCCESS" ]; then
               echo "Skip (CI summary=${CI_SUMMARY})"
               continue
@@ -127,7 +172,11 @@ jobs:
             if [ "$MERGE_STATE" = "BEHIND" ] || [ "$MERGE_STATE" = "DIRTY" ]; then
               echo "Updating branch from base..."
               if gh pr update-branch "$PR_NUMBER" --repo "${{ github.repository }}"; then
-                echo "Branch updated; next CI run will merge"
+                echo "Branch updated; unstick any action_required follow-up runs"
+                # New bot commit often needs approval before CI jobs appear.
+                sleep 8
+                unstick_action_required "$PR_NUMBER"
+                echo "Next green CI will merge"
               else
                 echo "update-branch failed (may need manual conflict resolution)"
               fi
