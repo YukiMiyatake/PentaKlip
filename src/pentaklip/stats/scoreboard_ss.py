@@ -11,9 +11,10 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from pentaklip.paths import sanitize_game_id, with_game_id_prefix
 from pentaklip.stats.catalog import StatKey
@@ -300,7 +301,7 @@ def match_columns_to_players(
                 remaining,
                 ocr_scale=ocr_scale,
             )
-        except Exception:  # noqa: BLE001 — icon matching is best-effort
+        except Exception:
             logger.exception("champion icon matching failed for %s", image_path)
             icon_map = {}
         for index, player in icon_map.items():
@@ -337,9 +338,8 @@ def _match_columns_by_champion_icons(
     *,
     ocr_scale: int,
 ) -> dict[int, PlayerPositionAggregate]:
-    from PIL import Image
-
     import numpy as np
+    from PIL import Image
 
     image = Image.open(image_path).convert("RGB")
     width, height = image.size
@@ -415,7 +415,7 @@ def _load_champion_icon(champion_key: str) -> Any | None:
         import urllib.request
 
         req = urllib.request.Request(url, headers={"User-Agent": "PentaKlip/0.1"})
-        with urllib.request.urlopen(req, timeout=10) as response:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=10) as response:
             data = response.read()
         cache_path.write_bytes(data)
         return Image.open(cache_path).convert("RGBA")
@@ -590,6 +590,6 @@ def enrich_aggregated_from_scoreboard_ss(
             image_path=ss_path,
             ocr_scale=scale,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("scoreboard SS enrich failed for %s", ss_path)
         return aggregated
