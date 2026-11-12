@@ -11,6 +11,28 @@ import {
 import { RoflOverviewCard } from "../components/RoflOverviewCard";
 import type { FsEntry, LocalReplayItem, RoflOverview, UiPreferences } from "../types";
 
+function normPath(path: string | null | undefined): string {
+  return (path || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+function fileNameOf(path: string | null | undefined): string {
+  if (!path) return "";
+  const parts = path.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] || "";
+}
+
+function findRememberedTarget(
+  items: LocalReplayItem[],
+  remembered: string | null | undefined,
+): LocalReplayItem | null {
+  if (!remembered) return null;
+  const exact = items.find((item) => normPath(item.path) === normPath(remembered));
+  if (exact) return exact;
+  const name = fileNameOf(remembered).toLowerCase();
+  if (!name) return null;
+  return items.find((item) => item.filename.toLowerCase() === name) ?? null;
+}
+
 export function ReplacePage() {
   const [prefs, setPrefs] = useState<UiPreferences | null>(null);
   const [replaysDir, setReplaysDir] = useState("");
@@ -44,10 +66,22 @@ export function ReplacePage() {
         const listed = await loadLocalReplays(p.last_replays_dir ?? null);
         if (cancelled) return;
         if (p.fixed_target_rofl) {
-          const stillThere = listed.items.some((item) => item.path === p.fixed_target_rofl);
-          if (stillThere) {
-            setTargetPath(p.fixed_target_rofl);
-            setTargetOverview(await inspectRofl(p.fixed_target_rofl));
+          const match = findRememberedTarget(listed.items, p.fixed_target_rofl);
+          const pathToUse = match?.path ?? p.fixed_target_rofl;
+          try {
+            const overview = await inspectRofl(pathToUse);
+            if (cancelled) return;
+            setTargetPath(pathToUse);
+            setTargetOverview(overview);
+            // Normalize remembered path when the file still exists under a different spelling.
+            if (pathToUse !== p.fixed_target_rofl) {
+              await rememberPrefs({
+                fixed_target_rofl: pathToUse,
+                last_replays_dir: listed.directory,
+              });
+            }
+          } catch {
+            // Remembered file missing — keep preference until user picks another.
           }
         }
         const dir = p.last_source_dir || "";
@@ -125,15 +159,23 @@ export function ReplacePage() {
       });
       if (picked.cancelled || !picked.path) return;
       const listed = await loadLocalReplays(picked.path);
-      await rememberPrefs({ last_replays_dir: listed.directory });
-      setMessage(`置き換え先フォルダを更新しました: ${listed.directory}`);
-      if (targetPath && !listed.items.some((item) => item.path === targetPath)) {
-        setTargetPath("");
-        setTargetOverview(null);
+      const remembered = prefs?.fixed_target_rofl || targetPath;
+      const match = findRememberedTarget(listed.items, remembered);
+      if (match) {
+        setTargetPath(match.path);
+        try {
+          setTargetOverview(await inspectRofl(match.path));
+        } catch {
+          setTargetOverview(null);
+        }
         await rememberPrefs({
           last_replays_dir: listed.directory,
-          fixed_target_rofl: null,
+          fixed_target_rofl: match.path,
         });
+        setMessage(`置き換え先フォルダを更新（ファイル維持）: ${match.filename}`);
+      } else {
+        await rememberPrefs({ last_replays_dir: listed.directory });
+        setMessage(`置き換え先フォルダを更新しました: ${listed.directory}`);
       }
     } catch (err) {
       setError(String(err));
@@ -144,7 +186,22 @@ export function ReplacePage() {
     setError(null);
     try {
       const listed = await loadLocalReplays(defaultReplaysDir || null);
-      await rememberPrefs({ last_replays_dir: listed.directory });
+      const remembered = prefs?.fixed_target_rofl || targetPath;
+      const match = findRememberedTarget(listed.items, remembered);
+      if (match) {
+        setTargetPath(match.path);
+        try {
+          setTargetOverview(await inspectRofl(match.path));
+        } catch {
+          setTargetOverview(null);
+        }
+        await rememberPrefs({
+          last_replays_dir: listed.directory,
+          fixed_target_rofl: match.path,
+        });
+      } else {
+        await rememberPrefs({ last_replays_dir: listed.directory });
+      }
       setMessage(`LoL 既定フォルダに戻しました: ${listed.directory}`);
     } catch (err) {
       setError(String(err));
@@ -265,20 +322,32 @@ export function ReplacePage() {
             </p>
           ) : null}
           <label className="hint" style={{ display: "block", marginTop: 10, marginBottom: 4 }}>
-            フォルダ内の .rofl（置き換え先ファイル）
+            フォルダ内の .rofl（置き換え先ファイル・選択内容を記憶）
           </label>
           <select
             className="select"
-            value={targetPath}
+            value={
+              locals.find((item) => normPath(item.path) === normPath(targetPath))?.path ??
+              targetPath
+            }
             onChange={(e) => onSelectTarget(e.target.value)}
           >
             <option value="">選択…</option>
+            {targetPath &&
+            !locals.some((item) => normPath(item.path) === normPath(targetPath)) ? (
+              <option value={targetPath}>{fileNameOf(targetPath)}（記憶中）</option>
+            ) : null}
             {locals.map((item) => (
               <option key={item.path} value={item.path}>
                 {item.filename}
               </option>
             ))}
           </select>
+          {targetPath ? (
+            <p className="mono hint" style={{ marginTop: 6 }}>
+              記憶中のファイル: {targetPath}
+            </p>
+          ) : null}
           <RoflOverviewCard overview={targetOverview} title="置き換え先の概要" />
         </div>
 
