@@ -252,7 +252,7 @@ curl -X POST http://127.0.0.1:8787/api/clips/create `
 - `POST /api/stats/aggregate` … 集計のみ
 - `POST /api/stats/charts` … グラフ化のみ（集計結果 + レーン別表示設定）。`radar` / `lane_compare` / `table` / `line`
   - レーダーは各プレイヤー（塗り）とレーン平均（点線）。API 位置キー `UTILITY` の表示名は **SUPPORT**
-  - Live Client 制約: **GPM / GD15 / XPD15 は取得不可**。**DPM / DMG%** は終了画面『データ』タブの `{game_id}*.png` を `stats/` に置くと、イベント出力時およびスタッツ画面のフォルダ集計時に OCR でマージ（スコアボードでは不可。未取得時はレーダーから DPM/DMG% 軸を省略し KP% / VSPM を残す。**CSD15 / LVLD15** も 15分スナップが無い場合は軸・集計から除外（欠損を 0 扱いしない。フォルダ平均は値が入っている試合だけ）。Windows OCR: `pip install 'pentaklip[ocr]'`）。デフォルトレーダー軸は `CSM / KDA / KP% / CSD15 / LVLD15 / DPM / DMG% / VSPM`。テーブル既定は Champion / KDA / KP% / CSM / CSD15 / LVLD15 / DPM / DMG% / VSPM（JG に Dragon/Baron/Herald、SUP は Vision Score を優先）。CS@15 / CS 生値 / Level / OBJ / Towers 等は表示設定のオプション
+  - Live Client 制約: **GPM / GD15 / XPD15 は取得不可**。**DPM / DMG%** は終了画面『データ』タブの `{game_id}*.png` を `stats/` に置くと、イベント出力時およびスタッツ画面のフォルダ集計時に OCR でマージ（スコアボードでは不可。未取得時はレーダーから DPM/DMG% 軸を省略し KP% / VSPM を残す。**CSD15 / LVLD15** は harvest 中の multipoll スナップ（既定約30秒ごと）から算出。無い場合は軸・集計から除外（欠損を 0 扱いしない。フォルダ平均は値が入っている試合だけ）。同一 `game_id` の stats は **1ファイルだけ** 集計（古い `-1` コピーは無視／再出力時は上書き）。Windows OCR: `pip install 'pentaklip[ocr]'`）。デフォルトレーダー軸は `CSM / KDA / KP% / CSD15 / LVLD15 / DPM / DMG% / VSPM`。テーブル既定は Champion / KDA / KP% / CSM / CSD15 / LVLD15 / DPM / DMG% / VSPM（JG に Dragon/Baron/Herald、SUP は Vision Score を優先）。CS@15 / CS 生値 / Level / OBJ / Towers 等は表示設定のオプション
   - `Gold (active)` は観戦中アクティブプレイヤーの所持金のみ（獲得ゴールドではない）
 - `GET/PUT /api/stats/display-settings` … レーンごとに Table / Radar / 時系列を設定（`radar_by_position` でレーダー軸を明示。未設定時は LCK 8 軸）
 

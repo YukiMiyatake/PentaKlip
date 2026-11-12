@@ -85,23 +85,27 @@ def test_accumulator_merges_across_polls() -> None:
 
 def test_harvest_playthrough_accumulates(monkeypatch) -> None:
     monkeypatch.setattr("pentaklip.events.harvest.time.sleep", lambda _s: None)
-    status, all_data = harvest_events_playthrough(
+    harvested = harvest_events_playthrough(
         live=FakeLive(),  # type: ignore[arg-type]
         replay=FakeReplay(length=100.0),  # type: ignore[arg-type]
         speed=16.0,
         poll_interval_sec=0.0,
+        stats_sample_interval_sec=1.0,
     )
-    assert status.available is True
-    assert status.event_count >= 3
-    assert status.source == "liveclientdata+harvest"
-    assert all_data is not None
+    assert harvested.status.available is True
+    assert harvested.status.event_count >= 3
+    assert harvested.status.source == "liveclientdata+harvest"
+    assert harvested.last_all_game_data is not None
+    assert harvested.stats_bundle is not None
+    assert len(harvested.stats_bundle.snapshots) >= 1
+    assert harvested.stats_bundle.meta.get("capture_mode") == "harvest_multipoll"
 
 
 def test_harvest_without_replay_api_warns() -> None:
-    status, _ = harvest_events_playthrough(
+    harvested = harvest_events_playthrough(
         live=FakeLive(),  # type: ignore[arg-type]
         replay=FakeReplay(available=False),  # type: ignore[arg-type]
     )
-    assert status.available is True
-    assert status.warning
-    assert "EnableReplayApi" in status.warning
+    assert harvested.status.available is True
+    assert harvested.status.warning
+    assert "EnableReplayApi" in harvested.status.warning

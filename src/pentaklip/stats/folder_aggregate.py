@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -57,15 +58,61 @@ def _load_one_aggregated(path: Path) -> AggregatedReplayStats | None:
     return None
 
 
+def _game_key_from_stats_filename(path: Path) -> str:
+    """
+    Collapse ``JP1-1_stats_aggregated`` / ``JP1-1_stats_aggregated-2`` to one key.
+
+    Also works for ``*_stats_bundle(-N)``.
+    """
+    stem = path.stem
+    lower = stem.lower()
+    for marker in ("_stats_aggregated", "_stats_bundle"):
+        idx = lower.rfind(marker)
+        if idx > 0:
+            return stem[:idx]
+    return stem
+
+
+def _stats_suffix_rank(stem: str) -> int:
+    """``foo_stats_aggregated-2`` → 2; canonical (no ``-N``) → 0."""
+    match = re.search(r"-(\d+)$", stem)
+    return int(match.group(1)) if match else 0
+
+
+def _prefer_stats_path(current: Path | None, candidate: Path) -> Path:
+    """Prefer newer mtime; ties → higher ``-N`` re-export (newer than canonical)."""
+    if current is None:
+        return candidate
+
+    def rank(path: Path) -> tuple[float, int]:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        return (mtime, _stats_suffix_rank(path.stem))
+
+    return candidate if rank(candidate) >= rank(current) else current
+
+
+def _dedupe_one_file_per_game(paths: list[Path]) -> list[Path]:
+    by_game: dict[str, Path] = {}
+    for path in paths:
+        key = _game_key_from_stats_filename(path)
+        by_game[key] = _prefer_stats_path(by_game.get(key), path)
+    return sorted(by_game.values(), key=lambda p: p.name.lower())
+
+
 def discover_stats_files(directory: Path) -> list[Path]:
-    """Prefer ``*_stats_aggregated.json``, else bundles / generic stats JSON."""
+    """Prefer ``*_stats_aggregated.json``, else bundles; **one file per game_id**."""
     root = directory.resolve()
     if not root.is_dir():
         raise NotADirectoryError(f"Not a directory: {root}")
-    aggregated = sorted(root.glob("*_stats_aggregated.json")) + sorted(
-        root.glob("stats_aggregated.json")
+    aggregated = (
+        sorted(root.glob("*_stats_aggregated.json"))
+        + sorted(root.glob("*_stats_aggregated-*.json"))
+        + sorted(root.glob("stats_aggregated.json"))
     )
-    # Dedupe by resolve
+    # Dedupe by resolve then by game id (drop stale -1/-2 copies).
     seen: set[Path] = set()
     files: list[Path] = []
     for path in aggregated:
@@ -75,15 +122,19 @@ def discover_stats_files(directory: Path) -> list[Path]:
         seen.add(key)
         files.append(path)
     if files:
-        return files
-    bundles = sorted(root.glob("*_stats_bundle.json")) + sorted(root.glob("stats_bundle.json"))
+        return _dedupe_one_file_per_game(files)
+    bundles = (
+        sorted(root.glob("*_stats_bundle.json"))
+        + sorted(root.glob("*_stats_bundle-*.json"))
+        + sorted(root.glob("stats_bundle.json"))
+    )
     for path in bundles:
         key = path.resolve()
         if key in seen:
             continue
         seen.add(key)
         files.append(path)
-    return files
+    return _dedupe_one_file_per_game(files)
 
 
 def average_merged_players(
