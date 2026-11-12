@@ -124,6 +124,60 @@ def remap_aggregate_to_roster(
             players.append(player)
     return aggregated.model_copy(update={"players": players})
 
+def player_is_excluded(
+    player: PlayerPositionAggregate,
+    excluded_by_position: dict[Position, list[str]] | None,
+) -> bool:
+    """True when this lane×player is in the exclusion filter (tag ignored)."""
+    if not excluded_by_position:
+        return False
+    aliases = excluded_by_position.get(player.position) or []
+    if not aliases:
+        return False
+    candidates = [
+        player.player_id,
+        player.identity.riot_id_game_name if player.identity else None,
+        player.identity.player_id if player.identity else None,
+        player.identity.summoner_name if player.identity else None,
+    ]
+    observed = [c for c in candidates if isinstance(c, str) and c.strip()]
+    for alias in aliases:
+        alias_s = str(alias).strip()
+        if not alias_s:
+            continue
+        for name in observed:
+            if fuzzy_riot_name_match(alias_s, name):
+                return True
+    return False
+
+
+def filter_excluded_players(
+    players: list[PlayerPositionAggregate],
+    excluded_by_position: dict[Position, list[str]] | None,
+) -> list[PlayerPositionAggregate]:
+    """Drop lane×player rows that are excluded from chart/aggregate math."""
+    if not excluded_by_position:
+        return players
+    return [
+        p for p in players if not player_is_excluded(p, excluded_by_position)
+    ]
+
+
+def apply_player_exclusions(
+    aggregated: AggregatedReplayStats,
+    excluded_by_position: dict[Position, list[str]] | None,
+) -> AggregatedReplayStats:
+    """Return a copy of ``aggregated`` without excluded lane×player rows."""
+    if not excluded_by_position:
+        return aggregated
+    kept = filter_excluded_players(list(aggregated.players), excluded_by_position)
+    if len(kept) == len(aggregated.players):
+        return aggregated
+    meta = dict(aggregated.meta or {})
+    meta["excluded_players_applied"] = True
+    meta["excluded_player_count"] = len(aggregated.players) - len(kept)
+    return aggregated.model_copy(update={"players": kept, "meta": meta})
+
 
 def clean_roster_aliases(values: Iterable[str] | None) -> list[str]:
     cleaned: list[str] = []

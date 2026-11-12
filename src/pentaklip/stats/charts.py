@@ -363,15 +363,21 @@ def build_charts(
 
     Does not recompute stats; only filters/shapes using display settings.
     Emits LCK-style lane comparison bars, radar polygons, plus optional lines.
+    Excluded lane×players are dropped before any averages / tables / radars.
     """
+    from pentaklip.stats.roster import apply_player_exclusions
+
     settings = display or default_display_settings()
+    filtered = apply_player_exclusions(
+        aggregated, settings.excluded_players_by_position
+    )
     charts: list[ChartSpec] = []
 
     by_pos: dict[Position, list[PlayerPositionAggregate]] = {}
-    for player in aggregated.players:
+    for player in filtered.players:
         by_pos.setdefault(player.position, []).append(player)
 
-    all_players = list(aggregated.players)
+    all_players = list(filtered.players)
     applied: dict[str, list[str]] = {}
     for position in _POSITION_ORDER:
         players = by_pos.get(position) or []
@@ -380,11 +386,13 @@ def build_charts(
         table_keys = settings.table_by_position.get(position) or []
         chart_keys = settings.charts_by_position.get(position) or []
         radar_keys = settings.radar_by_position.get(position) or list(LCK_RADAR_STAT_KEYS)
+        excluded = settings.excluded_players_by_position.get(position) or []
         applied[position.value] = [
             *[f"table:{k.value}" for k in table_keys],
             *[f"compare:{k.value}" for k in table_keys],
             *[f"radar:{k.value}" for k in _radar_axis_keys(radar_keys, players=players)],
             *[f"chart:{k.value}" for k in chart_keys],
+            *[f"exclude:{name}" for name in excluded],
         ]
         if table_keys:
             charts.append(_table_chart_for_position(position, players, table_keys))
