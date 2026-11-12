@@ -34,6 +34,7 @@ from pentaklip.api.schemas import (
     InstallReplayResponse,
     ListDirRequest,
     LocalReplayItem,
+    LocalReplaysResponse,
     ParseMatchIdResponse,
     PickDirectoryRequest,
     StartStatsSessionRequest,
@@ -130,7 +131,13 @@ def health() -> HealthResponse:
 
 @app.post("/api/replays/install", response_model=InstallReplayResponse)
 def api_install_replay(body: InstallReplayRequest) -> InstallReplayResponse:
-    replays_dir = Path(body.replays_dir) if body.replays_dir else settings.lol_replays_dir
+    prefs = load_ui_preferences(settings.data_dir)
+    if body.replays_dir:
+        replays_dir = Path(body.replays_dir)
+    elif prefs.last_replays_dir:
+        replays_dir = Path(prefs.last_replays_dir)
+    else:
+        replays_dir = settings.lol_replays_dir
     try:
         result = install_replay(
             Path(body.source_path),
@@ -152,9 +159,9 @@ def api_install_replay(body: InstallReplayRequest) -> InstallReplayResponse:
             local_replay_id=result.local_replay_id,
             installed_path=str(result.installed_path),
         )
-        prefs = load_ui_preferences(settings.data_dir)
         prefs.last_game_id = result.original_match_id
         prefs.fixed_target_rofl = str(result.installed_path)
+        prefs.last_replays_dir = str(Path(result.installed_path).parent)
         save_ui_preferences(settings.data_dir, prefs)
 
     return InstallReplayResponse(
@@ -173,18 +180,33 @@ def api_list_replays() -> list[dict]:
     return get_database().list_replays()
 
 
-@app.get("/api/replays/local", response_model=list[LocalReplayItem])
-def api_list_local_replays() -> list[LocalReplayItem]:
-    items = list_local_replays(settings.lol_replays_dir)
-    return [
-        LocalReplayItem(
-            path=str(item.path),
-            filename=item.filename,
-            match_id=item.match_id,
-            size_bytes=item.size_bytes,
-        )
-        for item in items
-    ]
+@app.get("/api/replays/local", response_model=LocalReplaysResponse)
+def api_list_local_replays(directory: str | None = None) -> LocalReplaysResponse:
+    prefs = load_ui_preferences(settings.data_dir)
+    default_directory = settings.lol_replays_dir.expanduser().resolve()
+    chosen = directory or prefs.last_replays_dir or str(default_directory)
+    replays_dir = Path(chosen).expanduser()
+    try:
+        resolved = replays_dir.resolve()
+    except OSError:
+        resolved = default_directory
+    if not resolved.is_dir():
+        # Fall back to LoL default when remembered path is missing.
+        resolved = default_directory
+    items = list_local_replays(resolved)
+    return LocalReplaysResponse(
+        directory=str(resolved),
+        default_directory=str(default_directory),
+        items=[
+            LocalReplayItem(
+                path=str(item.path),
+                filename=item.filename,
+                match_id=item.match_id,
+                size_bytes=item.size_bytes,
+            )
+            for item in items
+        ],
+    )
 
 
 @app.get("/api/replays/parse-id", response_model=ParseMatchIdResponse)

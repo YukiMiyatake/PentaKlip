@@ -92,7 +92,7 @@ python -m pentaklip
 
 | タブ | 内容 |
 |------|------|
-| 置き換え | LoL フォルダの置き換え先を固定し、コピー元 .rofl を選んで上書きコピー（元ゲーム ID を DB 保存） |
+| 置き換え | LoL Replays フォルダ（パス表示・参照で変更・記憶）を置き換え先にし、ダウンロードした .rofl を上書きコピー（元ゲーム ID を DB 保存） |
 | 自動切り分け | 録画動画 + イベント JSON からハイライト検出し ffmpeg で自動クリップ |
 | ffmpeg | インストール（winget）・PATH 追加・簡易設定（品質 / パス / webm自動変換） |
 | スタッツ / 表示設定 | 集計結果の表・グラフとレーン別表示設定 |
@@ -190,7 +190,7 @@ curl -X POST http://127.0.0.1:8787/api/replays/install `
 
 関連 API:
 
-- `GET /api/replays/local` … ローカル Replays 内の `.rofl` 一覧
+- `GET /api/replays/local` … ローカル Replays 内の `.rofl` 一覧（`directory` 任意。未指定時は記憶パス → LoL 既定）
 - `GET /api/replays/parse-id?path=...` … ファイル名からマッチ ID を抽出
 - `GET /api/replays` … DB に記録した配置履歴
 
