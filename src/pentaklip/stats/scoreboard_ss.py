@@ -225,7 +225,10 @@ def parse_scoreboard_lines(
             damage_label_y = line.cy
             break
     if damage_label_y is None:
-        raise ValueError("scoreboard SS missing damage row label (対チャンピオン与ダメージ合計)")
+        raise ValueError(
+            "scoreboard SS missing damage row label (対チャンピオン与ダメージ合計). "
+            "終了画面の『データ』タブを保存してください（スコアボードではダメージが取れません）"
+        )
 
     # Numbers sit on the same row as the label (slightly to the right).
     row_tol = max(28.0, 18.0 * ocr_scale)

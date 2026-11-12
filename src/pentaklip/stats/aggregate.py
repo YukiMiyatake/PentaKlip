@@ -354,12 +354,15 @@ def merge_aggregates(parts: list[AggregatedReplayStats]) -> list[PlayerPositionA
         StatKey.TOWER_KILLS.value,
         StatKey.INHIBITOR_KILLS.value,
         StatKey.OBJECTIVE_SCORE.value,
+        StatKey.DAMAGE_TO_CHAMPIONS.value,
     }
     avg_keys = {
         StatKey.CS_AT_15.value,
         StatKey.LEVEL_AT_15.value,
         StatKey.CSD15.value,
         StatKey.LVLD15.value,
+        StatKey.DPM.value,
+        StatKey.DAMAGE_SHARE.value,
     }
     for (player_id, position), items in sorted(buckets.items()):
         total_duration = sum(a.game_duration_sec for a, _ in items) or 1.0
