@@ -39,6 +39,28 @@ def test_install_replay_rejects_missing(tmp_path: Path) -> None:
         )
 
 
+def test_list_local_replays_newest_first(tmp_path: Path) -> None:
+    import os
+    import time
+
+    from pentaklip.replay.install import list_local_replays
+
+    replays = tmp_path / "Replays"
+    replays.mkdir()
+    older = replays / "JP1-1.rofl"
+    newer = replays / "JP1-2.rofl"
+    older.write_bytes(b"old")
+    time.sleep(0.02)
+    newer.write_bytes(b"new")
+    # Reinforce mtime ordering on filesystems with coarse stamps.
+    now = time.time()
+    os.utime(older, (now - 10, now - 10))
+    os.utime(newer, (now, now))
+
+    listed = list_local_replays(replays)
+    assert [item.filename for item in listed] == ["JP1-2.rofl", "JP1-1.rofl"]
+
+
 def test_api_list_local_replays_uses_directory(tmp_path: Path, monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
