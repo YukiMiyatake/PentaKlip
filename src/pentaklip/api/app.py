@@ -42,6 +42,7 @@ from pentaklip.api.schemas import (
     StartStatsSessionRequest,
     StartStatsSessionResponse,
     UiPreferencesModel,
+    UiPreferencesPatch,
 )
 from pentaklip.clips.service import ClipSegment, create_clips
 from pentaklip.config import settings
@@ -62,6 +63,8 @@ from pentaklip.settings_store import (
     load_ui_preferences,
     pick_directory,
     save_ui_preferences,
+    ui_preferences_path,
+    update_ui_preferences,
 )
 from pentaklip.stats.aggregate import aggregate_replay
 from pentaklip.stats.catalog import (
@@ -577,16 +580,40 @@ def api_inspect_rofl(path: str) -> RoflOverview:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _ui_preferences_response(prefs: UiPreferences) -> UiPreferencesModel:
+    payload = prefs.model_dump()
+    payload["settings_path"] = str(ui_preferences_path(settings.data_dir).resolve())
+    return UiPreferencesModel.model_validate(payload)
+
+
 @app.get("/api/ui/preferences", response_model=UiPreferencesModel)
 def api_get_ui_preferences() -> UiPreferencesModel:
-    prefs = load_ui_preferences(settings.data_dir)
-    return UiPreferencesModel.model_validate(prefs.model_dump())
+    return _ui_preferences_response(load_ui_preferences(settings.data_dir))
+
+
+@app.patch("/api/ui/preferences", response_model=UiPreferencesModel)
+def api_patch_ui_preferences(body: UiPreferencesPatch) -> UiPreferencesModel:
+    """Merge only the fields present in the JSON body into ``ui_preferences.json``."""
+    updates = body.model_dump(exclude_unset=True)
+    saved = update_ui_preferences(settings.data_dir, updates)
+    return _ui_preferences_response(saved)
 
 
 @app.put("/api/ui/preferences", response_model=UiPreferencesModel)
 def api_put_ui_preferences(body: UiPreferencesModel) -> UiPreferencesModel:
-    saved = save_ui_preferences(settings.data_dir, UiPreferences.model_validate(body.model_dump()))
-    return UiPreferencesModel.model_validate(saved.model_dump())
+    """
+    Merge preferences (same as PATCH).
+
+    Full-document replace from a stale UI state used to wipe other folders; PUT
+    now merges so existing keys are preserved unless explicitly sent.
+    """
+    updates = body.model_dump(exclude_unset=True, exclude={"settings_path"})
+    # Legacy clients always send every key; treat null-only "clear all" carefully
+    # by still merging — explicit null clears that key, omitted keys keep disk values.
+    # When every field is present (typical JSON.stringify of full object), this
+    # behaves like replace for those fields, which is what a deliberate full save wants.
+    saved = update_ui_preferences(settings.data_dir, updates)
+    return _ui_preferences_response(saved)
 
 
 @app.post("/api/fs/list")

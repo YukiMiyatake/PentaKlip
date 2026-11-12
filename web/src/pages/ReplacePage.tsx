@@ -6,7 +6,7 @@ import {
   listDir,
   listLocalReplays,
   pickDirectory,
-  putUiPreferences,
+  patchUiPreferences,
 } from "../api";
 import { RoflOverviewCard } from "../components/RoflOverviewCard";
 import type { FsEntry, LocalReplayItem, RoflOverview, UiPreferences } from "../types";
@@ -106,27 +106,10 @@ export function ReplacePage() {
     };
   }, []);
 
-  async function persist(next: UiPreferences) {
-    const saved = await putUiPreferences(next);
-    setPrefs(saved);
-  }
-
   async function rememberPrefs(partial: Partial<UiPreferences>) {
-    const base = prefs ?? (await getUiPreferences());
-    const next: UiPreferences = { ...base, ...partial };
-    const unchanged =
-      next.fixed_target_rofl === base.fixed_target_rofl &&
-      next.last_source_dir === base.last_source_dir &&
-      next.last_replays_dir === base.last_replays_dir &&
-      next.last_video_dir === base.last_video_dir &&
-      next.last_events_dir === base.last_events_dir &&
-      next.last_output_root === base.last_output_root &&
-      next.last_game_id === base.last_game_id;
-    if (unchanged) {
-      setPrefs(base);
-      return base;
-    }
-    return persist(next);
+    const saved = await patchUiPreferences(partial);
+    setPrefs(saved);
+    return saved;
   }
 
   async function onSelectTarget(path: string) {

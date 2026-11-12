@@ -10,7 +10,7 @@ import {
   listLocalHighlights,
   listLocalReplays,
   pickDirectory,
-  putUiPreferences,
+  patchUiPreferences,
 } from "../api";
 import type {
   CreateClipsResponse,
@@ -153,27 +153,10 @@ export function AutoSplitPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
 
-  async function persist(next: UiPreferences) {
-    setPrefs(await putUiPreferences(next));
-  }
-
   async function rememberPrefs(partial: Partial<UiPreferences>) {
-    const base = prefs ?? (await getUiPreferences());
-    const next: UiPreferences = { ...base, ...partial };
-    const unchanged =
-      next.fixed_target_rofl === base.fixed_target_rofl &&
-      next.last_source_dir === base.last_source_dir &&
-      next.last_replays_dir === base.last_replays_dir &&
-      next.last_video_dir === base.last_video_dir &&
-      next.last_highlights_dir === base.last_highlights_dir &&
-      next.last_events_dir === base.last_events_dir &&
-      next.last_output_root === base.last_output_root &&
-      next.last_game_id === base.last_game_id;
-    if (unchanged) {
-      setPrefs(base);
-      return base;
-    }
-    return persist(next);
+    const saved = await patchUiPreferences(partial);
+    setPrefs(saved);
+    return saved;
   }
 
   folderStateRef.current = { outputRoot, highlightsDir };
@@ -395,6 +378,9 @@ export function AutoSplitPage() {
         <p className="path-preview mono">
           Event/{gid}_events.json · stats/{gid}_stats_*.json
         </p>
+        {prefs?.settings_path ? (
+          <p className="path-preview mono">設定ファイル · {prefs.settings_path}</p>
+        ) : null}
         {prefsSavedNote ? <p className="success">{prefsSavedNote}</p> : null}
       </div>
 

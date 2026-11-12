@@ -161,6 +161,21 @@ class UiPreferencesModel(BaseModel):
     last_events_dir: str | None = None
     last_output_root: str | None = None
     last_game_id: str | None = None
+    # Populated on read only; ignored when saving.
+    settings_path: str | None = None
+
+
+class UiPreferencesPatch(BaseModel):
+    """Partial update for folder / match prefs (only sent keys are applied)."""
+
+    fixed_target_rofl: str | None = None
+    last_source_dir: str | None = None
+    last_replays_dir: str | None = None
+    last_video_dir: str | None = None
+    last_highlights_dir: str | None = None
+    last_events_dir: str | None = None
+    last_output_root: str | None = None
+    last_game_id: str | None = None
 
 
 class LocalReplaysResponse(BaseModel):
