@@ -25,9 +25,10 @@ gh pr create --label feature --title "..." --body "..."
 
 ## 自動マージ（既定）
 
-- タイプラベル付き + draft でない + CI 緑 → GitHub Actions が **squash auto-merge** する
+- タイプラベルは `feature` / `fix` / `chore` / `docs` / `ci` のいずれか（**`fix` だけでも可**）
+- タイプラベル付き + draft でない + CI 緑 → Actions が **即 squash マージ**する
 - エージェントは通常 **手動マージしない**（ユーザー指示がある場合のみ）
 - `push --force` はユーザー明示時のみ
-- PR が `BEHIND` のときは `main` を取り込んで push し、auto-merge が通るようにする
+- PR が `BEHIND` なら workflow が `update-branch` し、次の CI 緑でマージする（止まっていたら update / workflow 再実行）
 
 詳細: [`.github/LABELS.md`](../../.github/LABELS.md)
