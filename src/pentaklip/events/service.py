@@ -365,6 +365,11 @@ def export_events_json(
             bundle, unique_file_path(stats_dir / stats_prefix)
         )
         aggregated = aggregate_replay(bundle)
+        from pentaklip.stats.scoreboard_ss import enrich_aggregated_from_scoreboard_ss
+
+        aggregated = enrich_aggregated_from_scoreboard_ss(
+            aggregated, stats_dir, resolved_game_id
+        )
         aggregated_path = export_aggregated_stats(
             aggregated, unique_file_path(stats_dir / agg_name)
         )

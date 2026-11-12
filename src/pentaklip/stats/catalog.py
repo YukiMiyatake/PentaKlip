@@ -62,6 +62,10 @@ class StatKey(StrEnum):
     HERALD_KILLS = "herald_kills"
     TOWER_KILLS = "tower_kills"
     INHIBITOR_KILLS = "inhibitor_kills"
+    # Post-game scoreboard SS (OCR) — not available from Live Client
+    DAMAGE_TO_CHAMPIONS = "damage_to_champions"
+    DPM = "dpm"
+    DAMAGE_SHARE = "damage_share"
     # Series helpers (for charts; also stored on aggregate)
     CS_SERIES = "cs_series"
     KDA_SERIES = "kda_series"
@@ -96,6 +100,9 @@ STAT_LABELS: dict[StatKey, str] = {
     StatKey.HERALD_KILLS: "Heralds",
     StatKey.TOWER_KILLS: "Towers",
     StatKey.INHIBITOR_KILLS: "Inhibitors",
+    StatKey.DAMAGE_TO_CHAMPIONS: "DMG",
+    StatKey.DPM: "DPM",
+    StatKey.DAMAGE_SHARE: "DMG%",
     StatKey.CS_SERIES: "CS over time",
     StatKey.KDA_SERIES: "KDA over time",
     StatKey.LEVEL_SERIES: "Level over time",
@@ -129,9 +136,12 @@ TABLE_STAT_KEYS: tuple[StatKey, ...] = (
     StatKey.HERALD_KILLS,
     StatKey.TOWER_KILLS,
     StatKey.INHIBITOR_KILLS,
+    StatKey.DAMAGE_TO_CHAMPIONS,
+    StatKey.DPM,
+    StatKey.DAMAGE_SHARE,
 )
 
-# Live Client cannot provide GPM / GD15 / XPD15 / DPM / DMG%.
+# Live Client cannot provide GPM / GD15 / XPD15. DPM / DMG% come from `{game_id}_ss.png` OCR.
 # Default radar axes approximate the LCK octagon with available proxies.
 # Towers / OBJ are omitted — noisy for lane radar; use CS@15 + Vision Score instead.
 LCK_RADAR_STAT_KEYS: tuple[StatKey, ...] = (
