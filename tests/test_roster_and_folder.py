@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import pytest
 
 from pentaklip.stats.catalog import Position
 from pentaklip.stats.folder_aggregate import aggregate_stats_folder
@@ -71,3 +74,36 @@ def test_folder_average_with_roster(tmp_path: Path) -> None:
     assert mids[0].player_id == "Tanaka"
     # average of 4 and 6
     assert float(mids[0].scalars["kills"]) == 5.0
+
+def test_folder_aggregate_enriches_from_scoreboard_ss(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pentaklip.stats import folder_aggregate as fa
+
+    agg = _agg("MidLaner#JP1", kills=3)
+    path = tmp_path / "JP1-999_stats_aggregated.json"
+    path.write_text(agg.model_dump_json(indent=2), encoding="utf-8")
+
+    def fake_enrich(loaded, stats_dir, game_id):
+        assert game_id == "JP1-999"
+        players = []
+        for player in loaded.players:
+            scalars = dict(player.scalars)
+            scalars["damage_to_champions"] = 12000
+            scalars["dpm"] = 400.0
+            scalars["damage_share"] = 25.0
+            players.append(player.model_copy(update={"scalars": scalars}))
+        return loaded.model_copy(update={"players": players})
+
+    monkeypatch.setattr(
+        "pentaklip.stats.scoreboard_ss.enrich_aggregated_from_scoreboard_ss",
+        fake_enrich,
+    )
+    # Ensure PNG is "found" path isn't required because we stub enrich itself.
+    result = fa.aggregate_stats_folder(tmp_path)
+    assert result.aggregated.meta.get("scoreboard_ss_enriched") == 1
+    mid = next(p for p in result.players if p.player_id == "MidLaner#JP1")
+    assert mid.scalars["dpm"] == 400.0
+    # Rewritten on disk
+    rewritten = json.loads(path.read_text(encoding="utf-8"))
+    assert rewritten["players"][0]["scalars"]["dpm"] == 400.0

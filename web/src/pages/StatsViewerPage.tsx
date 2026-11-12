@@ -51,6 +51,10 @@ export function StatsViewerPage() {
       });
       const charts = await buildCharts(result.aggregated);
       setBundle(charts);
+      const ssEnriched = Number(
+        (result.aggregated.meta as { scoreboard_ss_enriched?: number } | undefined)
+          ?.scoreboard_ss_enriched ?? 0,
+      );
       setMeta(
         [
           `folder: ${result.directory}`,
@@ -58,7 +62,10 @@ export function StatsViewerPage() {
           `files: ${result.file_count}`,
           `duration avg: ${result.aggregated.game_duration_sec.toFixed(0)}s`,
           `charts: ${charts.charts.length}`,
-        ].join(" · "),
+          ssEnriched > 0 ? `OCR DMG: ${ssEnriched}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
       );
     } catch (err) {
       setError(String(err));

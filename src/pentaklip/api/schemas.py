@@ -147,6 +147,16 @@ class AggregateFolderStatsRequest(BaseModel):
     apply_roster: bool = True
 
 
+class EnrichScoreboardSsRequest(BaseModel):
+    """Merge `{game_id}*.png` damage OCR into an aggregated stats JSON."""
+
+    aggregated_path: str | None = None
+    stats_dir: str | None = None
+    game_id: str | None = None
+    ss_path: str | None = None
+    write: bool = True
+
+
 class ChartsRequest(BaseModel):
     aggregated: AggregatedReplayStats
     display: DisplaySettings | None = None

@@ -110,6 +110,7 @@ def average_merged_players(
         "herald_kills",
         "tower_kills",
         "inhibitor_kills",
+        "damage_to_champions",
     }
     out: list[PlayerPositionAggregate] = []
     for player in merged:
@@ -124,6 +125,54 @@ def average_merged_players(
     return out
 
 
+def _game_id_from_stats_path(path: Path, loaded: AggregatedReplayStats) -> str | None:
+    if loaded.original_match_id:
+        return str(loaded.original_match_id)
+    stem = path.stem
+    lower = stem.lower()
+    for marker in ("_stats_aggregated", "_stats_bundle", "_aggregated", "_bundle"):
+        idx = lower.rfind(marker)
+        if idx > 0:
+            return stem[:idx]
+    return None
+
+
+def _player_has_damage(player: PlayerPositionAggregate) -> bool:
+    return player.scalars.get("dpm") is not None or player.scalars.get(
+        "damage_to_champions"
+    ) is not None
+
+
+def _enrich_loaded_with_scoreboard_ss(
+    loaded: AggregatedReplayStats,
+    *,
+    stats_dir: Path,
+    source_path: Path,
+) -> tuple[AggregatedReplayStats, bool]:
+    """OCR ``{game_id}*.png`` into damage scalars; optionally rewrite aggregated JSON."""
+    from pentaklip.stats.export import export_aggregated_stats
+    from pentaklip.stats.scoreboard_ss import enrich_aggregated_from_scoreboard_ss
+
+    if any(_player_has_damage(player) for player in loaded.players):
+        return loaded, False
+
+    game_id = _game_id_from_stats_path(source_path, loaded)
+    if not game_id:
+        return loaded, False
+
+    enriched = enrich_aggregated_from_scoreboard_ss(loaded, stats_dir, game_id)
+    if not any(_player_has_damage(player) for player in enriched.players):
+        return enriched, False
+
+    # Persist so subsequent loads keep DPM/DMG% without re-OCR.
+    if source_path.name.lower().endswith("_stats_aggregated.json"):
+        try:
+            export_aggregated_stats(enriched, source_path)
+        except OSError:
+            logger.exception("failed to rewrite enriched aggregate %s", source_path)
+    return enriched, True
+
+
 def aggregate_stats_folder(
     directory: Path | str,
     *,
@@ -133,10 +182,16 @@ def aggregate_stats_folder(
     files = discover_stats_files(root)
     parts: list[AggregatedReplayStats] = []
     used: list[str] = []
+    ss_enriched = 0
     for path in files:
         loaded = _load_one_aggregated(path)
         if loaded is None:
             continue
+        loaded, did_enrich = _enrich_loaded_with_scoreboard_ss(
+            loaded, stats_dir=root, source_path=path
+        )
+        if did_enrich:
+            ss_enriched += 1
         remapped = remap_aggregate_to_roster(loaded, roster_by_position)
         parts.append(remapped)
         used.append(str(path))
@@ -171,6 +226,7 @@ def aggregate_stats_folder(
             "game_count": len(parts),
             "source_files": used,
             "roster_applied": bool(roster_by_position),
+            "scoreboard_ss_enriched": ss_enriched,
         },
     )
     return FolderAggregateResult(

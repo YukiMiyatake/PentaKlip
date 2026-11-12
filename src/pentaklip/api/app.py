@@ -23,6 +23,7 @@ from pentaklip.api.schemas import (
     CreatedClipItem,
     DetectRequest,
     DetectResponse,
+    EnrichScoreboardSsRequest,
     ExportEventsRequest,
     ExportEventsResponse,
     FfmpegInstallRequest,
@@ -863,6 +864,74 @@ def api_aggregate_stats_folder(body: AggregateFolderStatsRequest) -> dict:
     except NotADirectoryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return result.model_dump(mode="json")
+
+
+@app.post("/api/stats/enrich-scoreboard-ss", response_model=AggregatedReplayStats)
+def api_enrich_scoreboard_ss(body: EnrichScoreboardSsRequest) -> AggregatedReplayStats:
+    """OCR `{game_id}*.png` (データ tab) and merge DPM / DMG% into aggregated stats."""
+    from pentaklip.stats.export import export_aggregated_stats, load_aggregated_stats
+    from pentaklip.stats.scoreboard_ss import (
+        apply_scoreboard_damage,
+        enrich_aggregated_from_scoreboard_ss,
+        find_scoreboard_ss,
+        parse_scoreboard_ss,
+    )
+
+    aggregated_path = Path(body.aggregated_path) if body.aggregated_path else None
+    stats_dir = Path(body.stats_dir) if body.stats_dir else None
+    if aggregated_path is None and stats_dir is None:
+        raise HTTPException(status_code=400, detail="Provide aggregated_path or stats_dir")
+
+    if aggregated_path is not None:
+        if not aggregated_path.is_file():
+            raise HTTPException(status_code=404, detail=f"aggregated not found: {aggregated_path}")
+        aggregated = load_aggregated_stats(aggregated_path)
+        stats_dir = stats_dir or aggregated_path.parent
+    else:
+        assert stats_dir is not None
+        if body.game_id:
+            from pentaklip.paths import with_game_id_prefix
+
+            candidate = stats_dir / with_game_id_prefix(body.game_id, "stats_aggregated.json")
+            if not candidate.is_file():
+                raise HTTPException(status_code=404, detail=f"aggregated not found: {candidate}")
+            aggregated_path = candidate
+            aggregated = load_aggregated_stats(candidate)
+        else:
+            raise HTTPException(status_code=400, detail="game_id required when using stats_dir alone")
+
+    try:
+        if body.ss_path:
+            ss_path = Path(body.ss_path)
+            parsed = parse_scoreboard_ss(ss_path)
+            enriched = apply_scoreboard_damage(aggregated, parsed, image_path=ss_path)
+        else:
+            gid = body.game_id or aggregated.original_match_id
+            if not gid:
+                raise HTTPException(status_code=400, detail="game_id required to locate {game_id}*.png")
+            assert stats_dir is not None
+            if find_scoreboard_ss(stats_dir, gid) is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"scoreboard SS not found under {stats_dir} for {gid}",
+                )
+            enriched = enrich_aggregated_from_scoreboard_ss(aggregated, stats_dir, gid)
+            # enrich swallows errors — detect no-op
+            if enriched == aggregated:
+                sample = next(iter(enriched.players), None)
+                if sample is None or sample.scalars.get("dpm") is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="scoreboard SS present but OCR/merge failed (see server logs)",
+                    )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if body.write and aggregated_path is not None:
+        export_aggregated_stats(enriched, aggregated_path)
+    return enriched
 
 
 @app.post("/api/stats/charts", response_model=ChartBundle)
