@@ -26,6 +26,8 @@ class DisplaySettings(BaseModel):
     radar_by_position: dict[Position, list[StatKey]] = Field(default_factory=dict)
     # Registered names per lane for fuzzy Riot-ID matching (tag ignored).
     roster_by_position: dict[Position, list[str]] = Field(default_factory=dict)
+    # Lane × player ids/names excluded from chart/aggregate calculations.
+    excluded_players_by_position: dict[Position, list[str]] = Field(default_factory=dict)
 
 
 def default_display_settings() -> DisplaySettings:
@@ -87,6 +89,7 @@ def default_display_settings() -> DisplaySettings:
         charts_by_position=charts,
         radar_by_position=radar_by_position,
         roster_by_position={pos: [] for pos in Position},
+        excluded_players_by_position={pos: [] for pos in Position},
     )
 
 
@@ -98,6 +101,7 @@ def validate_display_settings(settings: DisplaySettings) -> DisplaySettings:
     charts: dict[Position, list[StatKey]] = {}
     radar: dict[Position, list[StatKey]] = {}
     roster: dict[Position, list[str]] = {}
+    excluded: dict[Position, list[str]] = {}
     for pos in Position:
         table[pos] = [k for k in settings.table_by_position.get(pos, []) if k in allowed_table]
         charts[pos] = [
@@ -110,11 +114,15 @@ def validate_display_settings(settings: DisplaySettings) -> DisplaySettings:
             # Older settings JSON without radar_by_position → LCK defaults.
             radar[pos] = list(LCK_RADAR_STAT_KEYS)
         roster[pos] = clean_roster_aliases(settings.roster_by_position.get(pos, []))
+        excluded[pos] = clean_roster_aliases(
+            settings.excluded_players_by_position.get(pos, [])
+        )
     return DisplaySettings(
         table_by_position=table,
         charts_by_position=charts,
         radar_by_position=radar,
         roster_by_position=roster,
+        excluded_players_by_position=excluded,
     )
 
 

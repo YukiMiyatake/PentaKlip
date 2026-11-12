@@ -45,7 +45,7 @@ export function PlayerVisibilityBar({
       aria-label="プレイヤー表示"
     >
       <div className="player-visibility-head">
-        <span className="hint">プレイヤー（スタッツ）</span>
+        <span className="hint">プレイヤー（オフ＝集計・平均から除外）</span>
         {hidden.size > 0 ? (
           <button type="button" className="btn ghost" onClick={showAll}>
             すべて表示
