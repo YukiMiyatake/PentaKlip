@@ -1,25 +1,44 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
+import { LaneFilterBar } from "../components/LaneFilterBar";
 import { RadarStatChart } from "../components/RadarStatChart";
+import {
+  filterChartsByLane,
+  normalizeLaneFilter,
+  type LaneFilter,
+} from "../lanes";
 import type { ChartSpec } from "../types";
 
 function params() {
   return new URLSearchParams(window.location.search);
 }
 
+function writeLaneToUrl(lane: LaneFilter) {
+  const u = new URL(window.location.href);
+  if (lane === "ALL") u.searchParams.delete("position");
+  else u.searchParams.set("position", lane);
+  window.history.replaceState({}, "", u);
+}
+
 export function ObsOverlayPage() {
   const q = useMemo(() => params(), []);
-  const positionFilter = (q.get("position") || "").toUpperCase() || null;
+  const initialLane = normalizeLaneFilter(q.get("position"));
   const playerFilter = q.get("player");
   const refreshSec = Math.max(0, Number(q.get("refresh") || "0") || 0);
   const chroma = q.get("chroma"); // e.g. #00ff00 for chroma key
   const dirParam = q.get("dir");
 
   const [directory, setDirectory] = useState(dirParam ?? "");
-  const [radars, setRadars] = useState<ChartSpec[]>([]);
+  const [laneFilter, setLaneFilter] = useState<LaneFilter>(initialLane);
+  const [allRadars, setAllRadars] = useState<ChartSpec[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const radars = useMemo(
+    () => filterChartsByLane(allRadars, laneFilter),
+    [allRadars, laneFilter],
+  );
 
   const load = useCallback(async (dir: string) => {
     if (!dir.trim()) {
@@ -35,11 +54,6 @@ export function ObsOverlayPage() {
       });
       const charts = await buildCharts(result.aggregated);
       let list = charts.charts.filter((c) => c.chart_type === "radar");
-      if (positionFilter) {
-        list = list.filter(
-          (c) => (c.position || "").toUpperCase() === positionFilter,
-        );
-      }
       if (playerFilter) {
         const needle = playerFilter.toLowerCase();
         list = list.filter((c) =>
@@ -50,24 +64,15 @@ export function ObsOverlayPage() {
           ),
         );
       }
-      setRadars(list);
-      setMeta(
-        [
-          `games ${result.game_count}`,
-          `radars ${list.length}`,
-          positionFilter ? `pos ${positionFilter}` : null,
-          playerFilter ? `player ${playerFilter}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      );
+      setAllRadars(list);
+      setMeta(`games ${result.game_count} · radars ${list.length}`);
     } catch (err) {
       setError(String(err));
-      setRadars([]);
+      setAllRadars([]);
     } finally {
       setBusy(false);
     }
-  }, [playerFilter, positionFilter]);
+  }, [playerFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +81,17 @@ export function ObsOverlayPage() {
       if (!dir) {
         try {
           const prefs = await getUiPreferences();
-          dir = prefs.last_events_dir || prefs.last_output_root || "";
+          if (prefs.last_output_root) {
+            const base = prefs.last_output_root.replace(/[/\\]+$/, "");
+            const sep =
+              prefs.last_output_root.includes("/") &&
+              !prefs.last_output_root.includes("\\")
+                ? "/"
+                : "\\";
+            dir = `${base}${sep}stats`;
+          } else {
+            dir = prefs.last_events_dir || "";
+          }
         } catch {
           /* optional */
         }
@@ -113,11 +128,28 @@ export function ObsOverlayPage() {
     };
   }, [chroma]);
 
+  function onLaneChange(next: LaneFilter) {
+    setLaneFilter(next);
+    writeLaneToUrl(next);
+  }
+
   return (
     <div className="obs-root">
       <div className="obs-toolbar">
         <span className="mono">OBS · radar</span>
-        {meta ? <span>{meta}</span> : null}
+        <LaneFilterBar
+          value={laneFilter}
+          onChange={onLaneChange}
+          compact
+        />
+        {meta ? (
+          <span>
+            {meta}
+            {laneFilter !== "ALL" ? ` · ${laneFilter}` : ""}
+            {playerFilter ? ` · player ${playerFilter}` : ""}
+            {` · show ${radars.length}`}
+          </span>
+        ) : null}
         {busy ? <span>更新中…</span> : null}
         <button
           type="button"
