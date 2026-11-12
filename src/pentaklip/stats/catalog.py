@@ -141,7 +141,7 @@ TABLE_STAT_KEYS: tuple[StatKey, ...] = (
     StatKey.DAMAGE_SHARE,
 )
 
-# Live Client cannot provide GPM / GD15 / XPD15. DPM / DMG% come from `{game_id}_ss.png` OCR.
+# Live Client cannot provide GPM / GD15 / XPD15. DPM / DMG% come from `{game_id}*.png` OCR.
 # Default radar axes approximate the LCK octagon with available proxies.
 # Towers / OBJ are omitted — noisy for lane radar; use CS@15 + Vision Score instead.
 LCK_RADAR_STAT_KEYS: tuple[StatKey, ...] = (

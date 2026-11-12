@@ -1,4 +1,4 @@
-"""Parse post-game Data-tab screenshots (`{game_id}_ss.png`) for damage stats.
+"""Parse post-game Data-tab screenshots (`{game_id}.png` / `{game_id}*.png`) for damage stats.
 
 Live Client cannot expose DPM / DMG%. The LoL end-of-game「データ」tab shows
 「対チャンピオン与ダメージ合計」 per champion icon (no summoner names). This
@@ -83,21 +83,48 @@ def champion_key_from_player(player: PlayerPositionAggregate) -> str | None:
 
 
 def find_scoreboard_ss(stats_dir: Path | str, game_id: str) -> Path | None:
+    """Locate a post-game screenshot matching ``{game_id}*.png`` (etc.).
+
+    Preference order:
+    1. Exact ``{game_id}.png``
+    2. Legacy ``{game_id}_ss.png``
+    3. Any other ``{game_id}*`` image (newest mtime wins)
+    """
     root = Path(stats_dir)
+    if not root.is_dir():
+        return None
     safe = sanitize_game_id(game_id)
-    for name in (
-        with_game_id_prefix(safe, "ss.png"),
-        f"{safe}_ss.PNG",
-        f"{safe}_SS.png",
-    ):
-        path = root / name
-        if path.is_file():
-            return path
-    matches = sorted(root.glob(f"{safe}_ss.*"))
-    for path in matches:
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
-            return path
-    return None
+    image_exts = {".png", ".jpg", ".jpeg", ".webp"}
+
+    exact = root / f"{safe}.png"
+    if exact.is_file():
+        return exact
+
+    legacy = root / with_game_id_prefix(safe, "ss.png")
+    if legacy.is_file():
+        return legacy
+
+    matches = [
+        path
+        for path in root.glob(f"{safe}*")
+        if path.is_file() and path.suffix.lower() in image_exts
+    ]
+    if not matches:
+        return None
+
+    def rank(path: Path) -> tuple[int, float, str]:
+        stem = path.stem
+        if stem == safe:
+            return (0, 0.0, path.name)
+        if stem.lower() == f"{safe}_ss".lower():
+            return (1, 0.0, path.name)
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        return (2, -mtime, path.name)
+
+    return min(matches, key=rank)
 
 
 def parse_compact_int(text: str) -> int | None:
@@ -568,7 +595,7 @@ def enrich_aggregated_from_scoreboard_ss(
     *,
     ocr_backend: OcrBackend | None = None,
 ) -> AggregatedReplayStats:
-    """If ``{game_id}_ss.png`` exists beside stats, merge damage metrics into aggregate."""
+    """If ``{game_id}*.png`` exists beside stats, merge damage metrics into aggregate."""
     gid = game_id or aggregated.original_match_id
     if not gid:
         return aggregated

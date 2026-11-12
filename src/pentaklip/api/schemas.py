@@ -148,7 +148,7 @@ class AggregateFolderStatsRequest(BaseModel):
 
 
 class EnrichScoreboardSsRequest(BaseModel):
-    """Merge `{game_id}_ss.png` damage OCR into an aggregated stats JSON."""
+    """Merge `{game_id}*.png` damage OCR into an aggregated stats JSON."""
 
     aggregated_path: str | None = None
     stats_dir: str | None = None

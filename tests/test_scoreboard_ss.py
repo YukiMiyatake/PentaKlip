@@ -19,7 +19,18 @@ from pentaklip.stats.scoreboard_ss import (
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE_OCR = FIXTURES / "scoreboard_ss_ocr_JP1-612229453.json"
 FIXTURE_AGG = FIXTURES / "JP1-612229453_stats_aggregated_slim.json"
-SAMPLE_SS = Path(r"E:\Game\PentaKlip\test1\stats\JP1-612229453_ss.png")
+SAMPLE_SS_DIR = Path(r"E:\Game\PentaKlip\test1\stats")
+SAMPLE_SS = next(
+    (
+        path
+        for path in (
+            SAMPLE_SS_DIR / "JP1-612229453.png",
+            SAMPLE_SS_DIR / "JP1-612229453_ss.png",
+        )
+        if path.is_file()
+    ),
+    SAMPLE_SS_DIR / "JP1-612229453.png",
+)
 
 
 def _load_fixture_lines() -> tuple[list[OcrLine], int, int]:
@@ -30,9 +41,22 @@ def _load_fixture_lines() -> tuple[list[OcrLine], int, int]:
 
 
 def test_find_scoreboard_ss(tmp_path: Path) -> None:
-    path = tmp_path / "JP1-612229453_ss.png"
-    path.write_bytes(b"fake")
-    assert find_scoreboard_ss(tmp_path, "JP1-612229453") == path
+    exact = tmp_path / "JP1-612229453.png"
+    exact.write_bytes(b"exact")
+    assert find_scoreboard_ss(tmp_path, "JP1-612229453") == exact
+
+    # Prefer exact name over legacy / wildcard suffixes.
+    legacy = tmp_path / "JP1-612229453_ss.png"
+    wildcard = tmp_path / "JP1-612229453_data.png"
+    legacy.write_bytes(b"legacy")
+    wildcard.write_bytes(b"wild")
+    assert find_scoreboard_ss(tmp_path, "JP1-612229453") == exact
+
+    exact.unlink()
+    assert find_scoreboard_ss(tmp_path, "JP1-612229453") == legacy
+
+    legacy.unlink()
+    assert find_scoreboard_ss(tmp_path, "JP1-612229453") == wildcard
     assert find_scoreboard_ss(tmp_path, "missing") is None
 
 

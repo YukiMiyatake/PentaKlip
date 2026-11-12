@@ -868,7 +868,7 @@ def api_aggregate_stats_folder(body: AggregateFolderStatsRequest) -> dict:
 
 @app.post("/api/stats/enrich-scoreboard-ss", response_model=AggregatedReplayStats)
 def api_enrich_scoreboard_ss(body: EnrichScoreboardSsRequest) -> AggregatedReplayStats:
-    """OCR `{game_id}_ss.png` (データ tab) and merge DPM / DMG% into aggregated stats."""
+    """OCR `{game_id}*.png` (データ tab) and merge DPM / DMG% into aggregated stats."""
     from pentaklip.stats.export import export_aggregated_stats, load_aggregated_stats
     from pentaklip.stats.scoreboard_ss import (
         apply_scoreboard_damage,
@@ -908,7 +908,7 @@ def api_enrich_scoreboard_ss(body: EnrichScoreboardSsRequest) -> AggregatedRepla
         else:
             gid = body.game_id or aggregated.original_match_id
             if not gid:
-                raise HTTPException(status_code=400, detail="game_id required to locate _ss.png")
+                raise HTTPException(status_code=400, detail="game_id required to locate {game_id}*.png")
             assert stats_dir is not None
             if find_scoreboard_ss(stats_dir, gid) is None:
                 raise HTTPException(
