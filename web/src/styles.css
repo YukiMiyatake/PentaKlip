@@ -707,6 +707,59 @@ table.stats th {
   border: 1px dashed #7ec8ff;
 }
 
+.lane-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.lane-filter-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lane-filter-btn {
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.lane-filter-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.lane-filter-btn.active {
+  color: #0c100e;
+  background: var(--accent, #b7f255);
+}
+
+.lane-filter-bar.compact {
+  padding: 2px;
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.lane-filter-bar.compact .lane-filter-btn {
+  padding: 4px 9px;
+  font-size: 0.75rem;
+}
+
 /* OBS Browser Source overlay */
 html.obs-overlay,
 body.obs-overlay,

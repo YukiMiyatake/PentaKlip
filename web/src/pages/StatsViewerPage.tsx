@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneCompareChart } from "../components/LaneCompareChart";
+import { LaneFilterBar } from "../components/LaneFilterBar";
 import { RadarStatChart } from "../components/RadarStatChart";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
+import { filterChartsByLane, type LaneFilter } from "../lanes";
 import type { AggregatedReplayStats, ChartBundle } from "../types";
 
 export function StatsViewerPage() {
@@ -12,13 +14,17 @@ export function StatsViewerPage() {
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [laneFilter, setLaneFilter] = useState<LaneFilter>("ALL");
 
   useEffect(() => {
     getUiPreferences()
       .then((p) => {
         if (p.last_output_root) {
           const base = p.last_output_root.replace(/[/\\]+$/, "");
-          const sep = p.last_output_root.includes("/") && !p.last_output_root.includes("\\") ? "/" : "\\";
+          const sep =
+            p.last_output_root.includes("/") && !p.last_output_root.includes("\\")
+              ? "/"
+              : "\\";
           setDirectory(`${base}${sep}stats`);
         } else if (p.last_events_dir) {
           setDirectory(p.last_events_dir);
@@ -91,16 +97,21 @@ export function StatsViewerPage() {
     }
   }
 
-  const compares =
-    bundle?.charts.filter((c) => c.chart_type === "lane_compare") ?? [];
-  const radars = bundle?.charts.filter((c) => c.chart_type === "radar") ?? [];
-  const tables = bundle?.charts.filter((c) => c.chart_type === "table") ?? [];
-  const lines = bundle?.charts.filter((c) => c.chart_type === "line") ?? [];
+  const visible = useMemo(() => {
+    const charts = bundle?.charts ?? [];
+    return filterChartsByLane(charts, laneFilter);
+  }, [bundle, laneFilter]);
+
+  const compares = visible.filter((c) => c.chart_type === "lane_compare");
+  const radars = visible.filter((c) => c.chart_type === "radar");
+  const tables = visible.filter((c) => c.chart_type === "table");
+  const lines = visible.filter((c) => c.chart_type === "line");
 
   const obsUrl = (() => {
     const u = new URL("/obs", window.location.origin);
     if (directory.trim()) u.searchParams.set("dir", directory.trim());
     u.searchParams.set("refresh", "30");
+    if (laneFilter !== "ALL") u.searchParams.set("position", laneFilter);
     return u.toString();
   })();
 
@@ -116,7 +127,11 @@ export function StatsViewerPage() {
             value={directory}
             onChange={(e) => setDirectory(e.target.value)}
           />
-          <button className="btn primary" disabled={busy} onClick={() => onFolderAggregate()}>
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={() => onFolderAggregate()}
+          >
             {busy ? "集計中…" : "集計"}
           </button>
         </div>
@@ -134,6 +149,17 @@ export function StatsViewerPage() {
       </div>
       {meta ? <p className="success">{meta}</p> : null}
       {error ? <p className="error">{error}</p> : null}
+
+      {bundle ? (
+        <div className="lane-filter-row">
+          <LaneFilterBar value={laneFilter} onChange={setLaneFilter} />
+          <span className="hint">
+            {laneFilter === "ALL"
+              ? `全 ${bundle.charts.length} チャート`
+              : `${visible.length} / ${bundle.charts.length}`}
+          </span>
+        </div>
+      ) : null}
 
       {radars.length > 0 ? (
         <div className="radar-grid" style={{ marginTop: 20 }}>
@@ -169,6 +195,12 @@ export function StatsViewerPage() {
             <StatChart key={chart.chart_id} chart={chart} />
           ))}
         </div>
+      ) : null}
+
+      {bundle && visible.length === 0 ? (
+        <p className="hint" style={{ marginTop: 16 }}>
+          このレーンのチャートはありません。
+        </p>
       ) : null}
     </section>
   );
