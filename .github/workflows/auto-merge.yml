@@ -3,11 +3,13 @@ name: Auto merge
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, ready_for_review]
-  check_suite:
-    types: [completed]
   workflow_run:
     workflows: [CI]
     types: [completed]
+  schedule:
+    # Sweep PRs that stayed open after --auto queued or went BEHIND.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,52 +31,116 @@ jobs:
       )
     runs-on: ubuntu-latest
     steps:
-      - name: Enable squash auto-merge
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr merge "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --auto \
-            --squash
-
-  merge-when-green:
-    name: Merge type-labeled PR when CI is green
-    if: >
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Find PR and merge if type-labeled
+      - name: Queue squash auto-merge (backup while CI runs)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          PR_NUMBER=$(gh api \
-            "repos/${{ github.repository }}/commits/${{ github.event.workflow_run.head_sha }}/pulls" \
-            --jq '.[0].number // empty')
-          if [ -z "$PR_NUMBER" ]; then
-            echo "No PR found for commit"
-            exit 0
+          # --auto only queues; real merge happens in merge-when-green.
+          gh pr merge "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --auto \
+            --squash || true
+
+  merge-when-green:
+    name: Merge type-labeled PR when CI is green
+    if: >
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'pull_request'
+      ) || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR numbers
+        id: prs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NUMBERS=""
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            NUMBERS=$(gh api \
+              "repos/${{ github.repository }}/commits/${SHA}/pulls" \
+              -H "Accept: application/vnd.github+json" \
+              --jq '[.[].number] | unique | .[]' || true)
+          else
+            NUMBERS=$(gh pr list --repo "${{ github.repository }}" --state open \
+              --json number,labels,isDraft \
+              --jq '.[] | select(.isDraft==false) | select(any(.labels[].name; .=="feature" or .=="fix" or .=="chore" or .=="docs" or .=="ci")) | .number')
           fi
-          LABELS=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '[.labels[].name] | join(",")')
-          echo "PR #$PR_NUMBER labels: $LABELS"
-          HAS_TYPE=false
-          for required in feature fix chore docs ci; do
-            if [[ ",${LABELS}," == *",${required},"* ]]; then
-              HAS_TYPE=true
-              break
+          {
+            echo "numbers<<EOF"
+            echo "$NUMBERS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Candidate PRs:"
+          echo "$NUMBERS"
+
+      - name: Update behind branches and squash-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
+        run: |
+          set -euo pipefail
+          TYPE_LABELS="feature fix chore docs ci"
+          printf '%s\n' "$PR_NUMBERS" | while IFS= read -r PR_NUMBER || [ -n "$PR_NUMBER" ]; do
+            PR_NUMBER=$(echo "$PR_NUMBER" | tr -d '[:space:]')
+            [ -z "$PR_NUMBER" ] && continue
+            echo "==== PR #${PR_NUMBER} ===="
+            META=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" \
+              --json labels,isDraft,state,mergeStateStatus,mergeable,statusCheckRollup)
+            STATE=$(echo "$META" | jq -r '.state')
+            DRAFT=$(echo "$META" | jq -r '.isDraft')
+            MERGE_STATE=$(echo "$META" | jq -r '.mergeStateStatus')
+            LABELS=$(echo "$META" | jq -r '[.labels[].name] | join(",")')
+            echo "state=${STATE} draft=${DRAFT} mergeState=${MERGE_STATE} labels=${LABELS}"
+
+            if [ "$STATE" != "OPEN" ] || [ "$DRAFT" = "true" ]; then
+              echo "Skip (not open / draft)"
+              continue
             fi
+
+            HAS_TYPE=false
+            for required in $TYPE_LABELS; do
+              if [[ ",${LABELS}," == *",${required},"* ]]; then
+                HAS_TYPE=true
+                break
+              fi
+            done
+            if [ "$HAS_TYPE" != "true" ]; then
+              echo "Skip (no type label)"
+              continue
+            fi
+
+            # Required check: CI summary must be success when present.
+            CI_SUMMARY=$(echo "$META" | jq -r '
+              [.statusCheckRollup[]?
+                | select(.name=="CI summary")
+                | .conclusion] | first // empty')
+            if [ -n "$CI_SUMMARY" ] && [ "$CI_SUMMARY" != "SUCCESS" ]; then
+              echo "Skip (CI summary=${CI_SUMMARY})"
+              continue
+            fi
+
+            if [ "$MERGE_STATE" = "BEHIND" ] || [ "$MERGE_STATE" = "DIRTY" ]; then
+              echo "Updating branch from base..."
+              if gh pr update-branch "$PR_NUMBER" --repo "${{ github.repository }}"; then
+                echo "Branch updated; next CI run will merge"
+              else
+                echo "update-branch failed (may need manual conflict resolution)"
+              fi
+              continue
+            fi
+
+            # Immediate squash. Do NOT treat --auto success as done:
+            # --auto only queues and leaves BEHIND / private-repo PRs stuck.
+            if gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash; then
+              echo "Merged #${PR_NUMBER}"
+              continue
+            fi
+
+            echo "Direct merge failed; queue --auto as fallback"
+            gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash --auto || true
           done
-          if [ "$HAS_TYPE" != "true" ]; then
-            echo "No type label (feature/fix/chore/docs/ci); skip"
-            exit 0
-          fi
-          DRAFT=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft')
-          if [ "$DRAFT" = "true" ]; then
-            echo "Draft PR; skip"
-            exit 0
-          fi
-          gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash --auto || \
-            gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash
