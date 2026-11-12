@@ -7,8 +7,10 @@ from typing import Any
 from pentaklip.stats.catalog import (
     LCK_RADAR_STAT_KEYS,
     OCR_RADAR_STAT_KEYS,
+    OPTIONAL_RADAR_STAT_KEYS,
     SERIES_STAT_KEYS,
     SIGNED_RADAR_STAT_KEYS,
+    SNAPSHOT_RADAR_STAT_KEYS,
     STAT_LABELS,
     Position,
     StatKey,
@@ -147,7 +149,7 @@ def _radar_axis_keys(
     *,
     players: list[PlayerPositionAggregate] | None = None,
 ) -> list[StatKey]:
-    """Order radar axes: LCK octagon first, then extras; drop OCR axes without data."""
+    """Order radar axes: LCK octagon first, then extras; drop optional axes without data."""
     usable = [k for k in columns if k not in _COMPARE_SKIP and k not in SERIES_STAT_KEYS]
     # De-dupe while preserving caller order for non-LCK extras.
     seen: set[StatKey] = set()
@@ -158,15 +160,23 @@ def _radar_axis_keys(
         seen.add(key)
         ordered.append(key)
 
-    has_damage = False
     if players is not None:
         has_damage = any(
             p.scalars.get(StatKey.DPM.value) is not None
             or p.scalars.get(StatKey.DAMAGE_SHARE.value) is not None
             for p in players
         )
-    if not has_damage:
-        ordered = [k for k in ordered if k not in OCR_RADAR_STAT_KEYS]
+        if not has_damage:
+            ordered = [k for k in ordered if k not in OCR_RADAR_STAT_KEYS]
+
+        def _lane_has(key: StatKey) -> bool:
+            return any(_as_number(p.scalars.get(key.value)) is not None for p in players)
+
+        ordered = [
+            k
+            for k in ordered
+            if k not in SNAPSHOT_RADAR_STAT_KEYS or _lane_has(k)
+        ]
     return ordered[:_RADAR_MAX_AXES]
 
 
@@ -230,14 +240,23 @@ def _radar_charts_for_position(
     """
     LCK-style radar (pentagon/hexagon): filled polygon = player, dashed = average.
 
-    Each row is one axis with raw + normalized values for Recharts RadarChart.
+    Optional axes (CSD15 / LVLD15 / OCR / CS@15) are omitted when that player has
+    no value — never fill with a fabricated center/zero.
     """
-    axes = _radar_axis_keys(columns, players=players)
-    if len(axes) < 3 or not players:
+    lane_axes = _radar_axis_keys(columns, players=players)
+    if len(lane_axes) < 3 or not players:
         return []
 
     charts: list[ChartSpec] = []
     for focus in sorted(players, key=lambda p: p.player_id.casefold()):
+        axes = [
+            key
+            for key in lane_axes
+            if key not in OPTIONAL_RADAR_STAT_KEYS
+            or _as_number(focus.scalars.get(key.value)) is not None
+        ]
+        if len(axes) < 3:
+            continue
         baseline_label, baseline_vals = _baseline_for_radar(
             focus, players, axes, all_players=all_players
         )
@@ -245,8 +264,6 @@ def _radar_charts_for_position(
         for key in axes:
             player_v = _as_number(focus.scalars.get(key.value))
             baseline_v = baseline_vals.get(key.value)
-            # Keep selected radar axes even when a value is missing (avoids
-            # collapsing to 4 spokes when CSD15/LVLD15/OCR are absent).
             present = [v for v in (player_v, baseline_v) if v is not None]
             peak = max((abs(v) for v in present), default=1.0)
             if peak <= 0:
@@ -276,8 +293,6 @@ def _radar_charts_for_position(
                     "signed": signed,
                 }
             )
-        if len(rows) < 3:
-            continue
         charts.append(
             ChartSpec(
                 chart_id=f"radar-{position.value}-{focus.player_id}",

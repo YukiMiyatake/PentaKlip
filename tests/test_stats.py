@@ -80,10 +80,10 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
     assert "damage_share" not in mid_axes
     assert "cs_at_15" not in mid_axes
     assert "ward_score" not in mid_axes
-    # Selected radar axes stay even when CSD15/LVLD15 are missing
-    assert "csd15" in mid_axes
-    assert "lvld15" in mid_axes
-    assert len(mid_axes) >= 6
+    # No 15:00 snapshots in oneshot fixture → CSD15/LVLD15 axes omitted
+    assert "csd15" not in mid_axes
+    assert "lvld15" not in mid_axes
+    assert len(mid_axes) >= 3
 
 
 def test_csd15_and_lvld15_vs_lane_opponent() -> None:
@@ -203,6 +203,52 @@ def test_merge_aggregates_by_player_and_position() -> None:
     mid = next(p for p in merged if p.player_id == "MidLaner#JP1" and p.position == Position.MIDDLE)
     assert mid.scalars[StatKey.KILLS.value] == 3
     assert mid.scalars[StatKey.CREEP_SCORE.value] == 180
+
+
+def test_merge_averages_optional_scalars_present_only() -> None:
+    """CSD15 / DPM: games without values are skipped, not treated as 0."""
+    from fixtures.allgamedata_sample import make_player
+
+    def with_foe(game_time: float, *, mid_cs: int, foe_cs: int):
+        data = all_game_data_at(game_time, mid_kills=1, mid_cs=mid_cs)
+        data["allPlayers"].append(
+            make_player(
+                name="EnemyMid",
+                champion="Syndra",
+                position="MIDDLE",
+                team="CHAOS",
+                kills=0,
+                deaths=0,
+                assists=0,
+                cs=foe_cs,
+                ward=2.0,
+                level=10,
+            )
+        )
+        return data
+
+    s_present = StatsCaptureSession(original_match_id="WITH-15")
+    s_present.ingest_all_game_data(with_foe(600.0, mid_cs=80, foe_cs=70))
+    s_present.ingest_all_game_data(with_foe(900.0, mid_cs=120, foe_cs=100))
+    a_present = aggregate_replay(s_present.finalize())
+
+    s_missing = StatsCaptureSession(original_match_id="NO-15")
+    s_missing.ingest_all_game_data(with_foe(1800.0, mid_cs=200, foe_cs=180))
+    a_missing = aggregate_replay(s_missing.finalize())
+
+    mid_present = next(p for p in a_present.players if "MidLaner" in p.player_id)
+    mid_missing = next(p for p in a_missing.players if "MidLaner" in p.player_id)
+    assert mid_present.scalars[StatKey.CSD15.value] == 20.0
+    assert mid_missing.scalars[StatKey.CSD15.value] is None
+
+    # Inject OCR on present game only; missing stays None.
+    mid_present.scalars[StatKey.DPM.value] = 400.0
+    mid_missing.scalars[StatKey.DPM.value] = None
+
+    merged = merge_aggregates([a_present, a_missing])
+    mid = next(p for p in merged if "MidLaner" in p.player_id)
+    assert mid.scalars[StatKey.CSD15.value] == 20.0
+    assert mid.scalars[StatKey.DPM.value] == 400.0
 
 
 def test_stats_api_session_flow(tmp_path: Path) -> None:
