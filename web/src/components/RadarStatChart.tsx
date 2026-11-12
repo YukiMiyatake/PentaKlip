@@ -32,8 +32,8 @@ export function RadarStatChart({ chart, compact = false }: Props) {
     <section className={`chart-card radar-card${compact ? " compact" : ""}`}>
       <h3>{chart.title}</h3>
       <p className="radar-legend-hint">
-        <span className="radar-swatch fill" /> {player?.label ?? "Player"}（塗り）
-        <span className="radar-swatch dash" /> {baseline?.label ?? "Baseline"}（点線）
+        <span className="radar-swatch fill" /> {player?.label ?? "Player"}
+        <span className="radar-swatch dash" /> {baseline?.label ?? "Baseline"}
       </p>
       <ResponsiveContainer width="100%" height={height}>
         <RadarChart data={data} cx="50%" cy="52%" outerRadius="72%">
