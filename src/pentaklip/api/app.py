@@ -570,6 +570,8 @@ def api_fs_list(body: ListDirRequest) -> dict:
         entries = list_directory(Path(body.directory), suffixes=body.suffixes)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "directory": str(Path(body.directory).expanduser().resolve()),
         "entries": [e.model_dump() for e in entries],
