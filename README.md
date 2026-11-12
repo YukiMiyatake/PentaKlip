@@ -23,6 +23,17 @@ LoL リプレイからキル・集団戦などのハイライトを検出し、�
 - ラベル無しだと PR label gate が失敗し自動マージされない
 - 詳細は [`.github/LABELS.md`](.github/LABELS.md)
 
+## 設定の保存場所
+
+フォルダパスや直近のゲーム ID などは API データディレクトリの JSON で管理します（既定: `%LocalAppData%\PentaKlip\`）。
+
+| ファイル | 内容 |
+|----------|------|
+| `ui_preferences.json` | 出力ベース、Replays / Highlights、ROFL、イベントフォルダ、last_game_id など |
+| `ffmpeg_settings.json` | ffmpeg パス・エンコーダ・品質 |
+
+UI からの更新は `PATCH /api/ui/preferences` で**送ったキーだけ**マージします（古い画面状態での全置換による消失を防ぐ）。GET レスポンスの `settings_path` で実ファイルパスを確認できます。
+
 ## 初回セットアップ
 
 ```powershell

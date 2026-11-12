@@ -88,11 +88,21 @@ export function getUiPreferences(): Promise<UiPreferences> {
   return request("/api/ui/preferences");
 }
 
-export function putUiPreferences(prefs: UiPreferences): Promise<UiPreferences> {
+/** Merge only the provided keys into the on-disk settings file (preferred). */
+export function patchUiPreferences(
+  partial: Partial<UiPreferences>,
+): Promise<UiPreferences> {
+  const body = { ...partial };
+  delete body.settings_path;
   return request("/api/ui/preferences", {
-    method: "PUT",
-    body: JSON.stringify(prefs),
+    method: "PATCH",
+    body: JSON.stringify(body),
   });
+}
+
+/** @deprecated Prefer patchUiPreferences — full PUT can wipe folders with stale state. */
+export function putUiPreferences(prefs: UiPreferences): Promise<UiPreferences> {
+  return patchUiPreferences(prefs);
 }
 
 export function listLocalReplays(directory?: string | null): Promise<{
