@@ -926,7 +926,7 @@ def api_enrich_scoreboard_ss(body: EnrichScoreboardSsRequest) -> AggregatedRepla
                     )
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if body.write and aggregated_path is not None:

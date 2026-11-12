@@ -8,7 +8,6 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from pentaklip.stats.catalog import (
-    LCK_RADAR_STAT_KEYS,
     SERIES_STAT_KEYS,
     TABLE_STAT_KEYS,
     Position,
@@ -27,58 +26,49 @@ class DisplaySettings(BaseModel):
 
 
 def default_display_settings() -> DisplaySettings:
-    """LCK-ish defaults; radar axes lead with Live Client proxies for the LCK octagon."""
-    # First columns drive radar (see LCK_RADAR_STAT_KEYS); extras follow for tables.
-    lck_lead = [StatKey.CHAMPION, *LCK_RADAR_STAT_KEYS]
-    shared_table = [
-        *lck_lead,
-        StatKey.KILLS,
-        StatKey.DEATHS,
-        StatKey.ASSISTS,
+    """Minimal LCK-readable defaults; extras stay available in display settings."""
+    # Radar axes lead (see LCK_RADAR_STAT_KEYS). Tables keep a tight core set.
+    # Optional (off by default): CS, CS@15, LVL@15, Level, Team, DMG raw, OBJ,
+    # Towers, Inhibitors, Gold, Items, raw K/D/A.
+    core_table = [
+        StatKey.CHAMPION,
+        StatKey.KDA_RATIO,
+        StatKey.KILL_PARTICIPATION,
+        StatKey.CS_PER_MIN,
+        StatKey.CSD15,
+        StatKey.LVLD15,
         StatKey.DPM,
         StatKey.DAMAGE_SHARE,
-        StatKey.DAMAGE_TO_CHAMPIONS,
-        StatKey.CREEP_SCORE,
-        StatKey.LEVEL_AT_15,
-        StatKey.LEVEL,
+        StatKey.VISION_PER_MIN,
+    ]
+    # Support: vision absolute over lane CS diffs.
+    support_table = [
+        StatKey.CHAMPION,
+        StatKey.KDA_RATIO,
+        StatKey.KILL_PARTICIPATION,
+        StatKey.WARD_SCORE,
+        StatKey.VISION_PER_MIN,
+        StatKey.DPM,
+        StatKey.DAMAGE_SHARE,
+        StatKey.LVLD15,
     ]
     jg_table = [
-        *lck_lead,
-        StatKey.KILLS,
-        StatKey.DEATHS,
-        StatKey.ASSISTS,
-        StatKey.CREEP_SCORE,
-        StatKey.LEVEL_AT_15,
+        *core_table,
         StatKey.DRAGON_KILLS,
         StatKey.BARON_KILLS,
         StatKey.HERALD_KILLS,
-        StatKey.GOLD,
-        StatKey.LEVEL,
     ]
-    support_table = [
-        *lck_lead,
-        StatKey.KILLS,
-        StatKey.DEATHS,
-        StatKey.ASSISTS,
-        StatKey.LEVEL,
-    ]
-    shared_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES, StatKey.LEVEL_SERIES]
-    jg_charts = [
-        StatKey.WARD_SERIES,
-        StatKey.KDA_SERIES,
-        StatKey.CS_SERIES,
-        StatKey.GOLD_SERIES,
-        StatKey.LEVEL_SERIES,
-    ]
+    shared_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES]
+    jg_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES, StatKey.WARD_SERIES]
     support_charts = [StatKey.WARD_SERIES, StatKey.KDA_SERIES]
 
     table = {
-        Position.TOP: list(shared_table),
+        Position.TOP: list(core_table),
         Position.JUNGLE: list(jg_table),
-        Position.MIDDLE: list(shared_table),
-        Position.BOTTOM: list(shared_table),
+        Position.MIDDLE: list(core_table),
+        Position.BOTTOM: list(core_table),
         Position.UTILITY: list(support_table),
-        Position.UNKNOWN: list(shared_table),
+        Position.UNKNOWN: list(core_table),
     }
     charts = {
         Position.TOP: list(shared_charts),
@@ -118,12 +108,35 @@ def display_settings_path(data_dir: Path) -> Path:
     return data_dir / "stats_display_settings.json"
 
 
+def _sanitize_display_settings_payload(data: object) -> object:
+    """Drop unknown StatKey strings so older/newer settings JSON cannot 500 the API."""
+    if not isinstance(data, dict):
+        return data
+    known = {key.value for key in StatKey}
+    out = dict(data)
+    for field in ("table_by_position", "charts_by_position"):
+        block = out.get(field)
+        if not isinstance(block, dict):
+            continue
+        cleaned: dict[str, list[str]] = {}
+        for pos, keys in block.items():
+            if not isinstance(keys, list):
+                continue
+            cleaned[str(pos)] = [
+                key for key in keys if isinstance(key, str) and key in known
+            ]
+        out[field] = cleaned
+    return out
+
+
 def load_display_settings(data_dir: Path) -> DisplaySettings:
     path = display_settings_path(data_dir)
     if not path.is_file():
         return default_display_settings()
     data = json.loads(path.read_text(encoding="utf-8"))
-    return validate_display_settings(DisplaySettings.model_validate(data))
+    return validate_display_settings(
+        DisplaySettings.model_validate(_sanitize_display_settings_payload(data))
+    )
 
 
 def save_display_settings(data_dir: Path, settings: DisplaySettings) -> Path:

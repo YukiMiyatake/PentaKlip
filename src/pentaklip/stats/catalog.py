@@ -141,18 +141,25 @@ TABLE_STAT_KEYS: tuple[StatKey, ...] = (
     StatKey.DAMAGE_SHARE,
 )
 
-# Live Client cannot provide GPM / GD15 / XPD15. DPM / DMG% come from `{game_id}*.png` OCR.
-# Default radar axes approximate the LCK octagon with available proxies.
-# Towers / OBJ are omitted — noisy for lane radar; use CS@15 + Vision Score instead.
+# Live Client cannot provide GPM / GD15 / XPD15. DPM / DMG% come from scoreboard SS OCR.
+# Default radar: LCK-like octagon. CS@15 / Vision Score / OBJ / Towers are optional (not radar).
 LCK_RADAR_STAT_KEYS: tuple[StatKey, ...] = (
     StatKey.CS_PER_MIN,  # CSM
     StatKey.KDA_RATIO,
-    StatKey.KILL_PARTICIPATION,  # ~DMG%
+    StatKey.KILL_PARTICIPATION,
     StatKey.CSD15,
     StatKey.LVLD15,  # ~XPD15
-    StatKey.VISION_PER_MIN,  # ~GPM/DPM gap filler
-    StatKey.CS_AT_15,  # early-lane absolute (pairs with CSD15)
-    StatKey.WARD_SCORE,  # absolute vision (pairs with VSPM)
+    StatKey.DPM,
+    StatKey.DAMAGE_SHARE,  # DMG%
+    StatKey.VISION_PER_MIN,  # VSPM
+)
+
+# Dropped from radar when OCR damage is missing (KP% / VSPM remain as fallbacks).
+OCR_RADAR_STAT_KEYS: frozenset[StatKey] = frozenset(
+    {
+        StatKey.DPM,
+        StatKey.DAMAGE_SHARE,
+    }
 )
 
 # Signed diffs: radar maps [-peak, +peak] → [0, 1] with 0 at center.

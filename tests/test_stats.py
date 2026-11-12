@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -46,7 +47,7 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
     assert any(c.chart_type == "line" for c in charts.charts)
     mid_compare = next(c for c in charts.charts if c.chart_id == "lane-compare-MIDDLE")
     assert mid_compare.rows
-    assert any(r.get("stat") == "Kills" for r in mid_compare.rows)
+    assert any(r.get("stat") == "KDA" for r in mid_compare.rows)
     mid_radar = next(c for c in charts.charts if c.chart_id.startswith("radar-MIDDLE-"))
     assert len(mid_radar.rows) >= 3
     assert all("player_norm" in r and "baseline_norm" in r for r in mid_radar.rows)
@@ -58,21 +59,27 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
 
     jg_table = next(c for c in charts.charts if c.chart_id == "table-JUNGLE")
     assert "Dragons" in jg_table.columns
-    assert "CS" in jg_table.columns
     assert "CSM" in jg_table.columns
-    assert "Gold (active)" in jg_table.columns
+    assert "CS" not in jg_table.columns
+    assert "Gold (active)" not in jg_table.columns
     jg_radar = next(c for c in charts.charts if c.chart_id.startswith("radar-JUNGLE-"))
-    assert len(jg_radar.rows) >= 6
+    assert len(jg_radar.rows) >= 3
     assert any(c.title.startswith("SUPPORT") for c in charts.charts)
     assert "MIDDLE" in charts.display_settings_applied
 
     catalog = TestClient(app).get("/api/stats/catalog").json()
     assert catalog["position_labels"]["UTILITY"] == "SUPPORT"
     assert "csd15" in {k["key"] for k in catalog["table_stat_keys"]}
+    assert "dpm" in {k["key"] for k in catalog["table_stat_keys"]}
     mid_axes = {r["stat_key"] for r in mid_radar.rows}
     assert "cs_per_min" in mid_axes
     assert "kda_ratio" in mid_axes
     assert "kill_participation" in mid_axes
+    # No OCR damage in Live Client fixture → DPM/DMG% axes omitted
+    assert "dpm" not in mid_axes
+    assert "damage_share" not in mid_axes
+    assert "cs_at_15" not in mid_axes
+    assert "ward_score" not in mid_axes
 
 
 def test_csd15_and_lvld15_vs_lane_opponent() -> None:
@@ -125,6 +132,25 @@ def test_csd15_and_lvld15_vs_lane_opponent() -> None:
         "lvld15",
     ]
 
+def test_radar_includes_dpm_when_ocr_damage_present() -> None:
+    session = StatsCaptureSession(original_match_id="SCRIM-DMG")
+    session.ingest_all_game_data(all_game_data_at(900.0, mid_kills=3, mid_cs=160))
+    aggregated = aggregate_replay(session.finalize())
+    players = []
+    for player in aggregated.players:
+        scalars = dict(player.scalars)
+        if player.player_id == "MidLaner#JP1":
+            scalars[StatKey.DPM.value] = 500.0
+            scalars[StatKey.DAMAGE_SHARE.value] = 22.0
+        players.append(player.model_copy(update={"scalars": scalars}))
+    aggregated = aggregated.model_copy(update={"players": players})
+    charts = build_charts(aggregated, default_display_settings())
+    radar = next(c for c in charts.charts if c.chart_id.startswith("radar-MIDDLE-MidLaner"))
+    keys = [r["stat_key"] for r in radar.rows]
+    assert "dpm" in keys
+    assert "damage_share" in keys
+    assert keys.index("dpm") < keys.index("vision_per_min")
+
 
 def test_display_settings_per_lane_filter() -> None:
     settings = default_display_settings()
@@ -140,7 +166,26 @@ def test_display_settings_per_lane_filter() -> None:
     top_table = next(c for c in charts.charts if c.chart_id == "table-TOP")
     assert "Kills" in top_table.columns
     assert "CSM" in top_table.columns
-    assert "Vision Score" not in top_table.columns
+    assert "DPM" not in top_table.columns
+
+def test_load_display_settings_ignores_unknown_stat_keys(tmp_path: Path) -> None:
+    """Newer settings (e.g. dpm) must not 500 when running an older StatKey set."""
+    from pentaklip.stats.display import load_display_settings, save_display_settings
+
+    settings = default_display_settings()
+    path = save_display_settings(tmp_path, settings)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["table_by_position"]["TOP"].extend(
+        ["gpm", "gd15", "not_a_real_stat"]
+    )
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = load_display_settings(tmp_path)
+    top_keys = {key.value for key in loaded.table_by_position[Position.TOP]}
+    assert "gpm" not in top_keys
+    assert "gd15" not in top_keys
+    assert "not_a_real_stat" not in top_keys
+    assert StatKey.KDA_RATIO.value in top_keys
 
 
 def test_merge_aggregates_by_player_and_position() -> None:
