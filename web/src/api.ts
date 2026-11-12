@@ -94,8 +94,16 @@ export function putUiPreferences(prefs: UiPreferences): Promise<UiPreferences> {
   });
 }
 
-export function listLocalReplays(): Promise<LocalReplayItem[]> {
-  return request("/api/replays/local");
+export function listLocalReplays(directory?: string | null): Promise<{
+  directory: string;
+  default_directory: string;
+  items: LocalReplayItem[];
+}> {
+  const q =
+    directory && directory.trim()
+      ? `?directory=${encodeURIComponent(directory.trim())}`
+      : "";
+  return request(`/api/replays/local${q}`);
 }
 
 export function inspectRofl(path: string): Promise<RoflOverview> {
@@ -106,6 +114,7 @@ export function installReplay(body: {
   source_path: string;
   local_replay_id: string;
   mode?: "copy" | "move" | "rename_in_place";
+  replays_dir?: string | null;
   dry_run?: boolean;
 }): Promise<{
   original_match_id: string;
