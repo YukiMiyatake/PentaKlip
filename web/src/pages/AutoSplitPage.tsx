@@ -51,36 +51,21 @@ export function AutoSplitPage() {
   const [exportFilename, setExportFilename] = useState("events.json");
   const [includeStats, setIncludeStats] = useState(true);
   const [exportNote, setExportNote] = useState<string | null>(null);
-  const [gameIdSource, setGameIdSource] = useState<string | null>(null);
+  
   const [prefsSavedNote, setPrefsSavedNote] = useState<string | null>(null);
   const rememberTimer = useRef<number | null>(null);
   const folderStateRef = useRef({ outputRoot: "", videoDir: "", eventsDir: "", gameId: "" });
 
   async function fillGameIdFromRofl(roflPath: string | null | undefined, fallbackId?: string | null) {
-    if (fallbackId) {
-      setGameId(fallbackId);
-      setGameIdSource("prefs/db original");
-    }
+    if (fallbackId) setGameId(fallbackId);
     if (!roflPath) return;
     try {
       const overview = await inspectRofl(roflPath);
-      // Prefer DB/prefs original id when present; otherwise ROFL meta/fingerprint.
-      if (!fallbackId && overview.match_id) {
-        setGameId(overview.match_id);
-        setGameIdSource(overview.match_id_source ?? "rofl");
-      } else if (fallbackId) {
-        // keep fallback, but show that ROFL meta is available
-        if (overview.match_id_source && overview.match_id_source !== "filename") {
-          setGameIdSource(`prefs/db original (rofl ${overview.match_id_source}: ${overview.match_id})`);
-        }
-      }
+      if (!fallbackId && overview.match_id) setGameId(overview.match_id);
     } catch {
       if (!fallbackId) {
         const inferred = inferGameIdFromName(roflPath);
-        if (inferred) {
-          setGameId(inferred);
-          setGameIdSource("filename");
-        }
+        if (inferred) setGameId(inferred);
       }
     }
   }
@@ -366,30 +351,18 @@ export function AutoSplitPage() {
 
   const base = outputRoot.replace(/[/\\]+$/, "") || "{出力ベース}";
   const gid = gameId.trim() || "{ゲームID}";
-  const previewLines = [
-    `${base}\\Event\\${gid}_events.json`,
-    `${base}\\stats\\${gid}_stats_*.json`,
-    `${base}\\Replay\\${gid}_*.mp4`,
-    `${base}\\Clip\\${gid}\\${gid}_01_label_0m10s-0m30s.mp4`,
-  ];
+  const outputPreview = `${base}\\Event|Replay|stats|Clip\\${gid}`;
 
   return (
     <section className="panel">
-      <h2>自動クリップ切り分け</h2>
-      <p className="hint">
-        出力ベースを1つ指定すると、その下に <span className="mono">Event</span> /
-        <span className="mono">Replay</span> / <span className="mono">stats</span> /
-        <span className="mono">Clip/ゲームID</span> を作って保存します。ffmpeg が必要です（ツールタブ）。
-        <span className="mono">.webm</span> は <span className="mono">Replay</span> に MP4
-        変換してから切り分けます。
-      </p>
+      <h2>自動切り分け</h2>
 
-      <div className="result-box" style={{ marginBottom: 16 }}>
-        <h3>出力ベース</h3>
+      <div className="result-box">
+        <h3>出力</h3>
         <div className="row">
           <input
             className="text-input grow"
-            placeholder="出力ベース（例: D:\\PentaKlip\\out）"
+            placeholder="出力ベース"
             value={outputRoot}
             onChange={(e) => {
               const next = e.target.value;
@@ -405,11 +378,10 @@ export function AutoSplitPage() {
           <input
             className="text-input"
             style={{ width: 220 }}
-            placeholder="ゲームID（ROFL meta / 元マッチID）"
+            placeholder="ゲームID"
             value={gameId}
             onChange={(e) => {
               setGameId(e.target.value);
-              setGameIdSource("manual");
               scheduleRememberFolders();
             }}
             onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
@@ -421,37 +393,20 @@ export function AutoSplitPage() {
               fillGameIdFromRofl(prefs?.fixed_target_rofl, null).catch((e) => setError(String(e)))
             }
           >
-            固定ROFLから取得
+            ROFLからID
           </button>
         </div>
-        <p className="mono hint">保存先プレビュー:</p>
-        <ul className="mono hint" style={{ marginTop: 4 }}>
-          {previewLines.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
+        <p className="path-preview mono">{outputPreview}</p>
         {prefsSavedNote ? <p className="success">{prefsSavedNote}</p> : null}
-        {gameIdSource ? <p className="hint">ゲームID出典: {gameIdSource}</p> : null}
-        <p className="hint">
-          ROFL の gameId（数だけなら <span className="mono">JP1-</span> を付与）やファイル名、DB
-          の元マッチIDから自動取得します。Event/stats はファイル名にゲームIDを付け、クリップは{" "}
-          <span className="mono">Clip/ゲームID</span> 以下に時間帯付きで保存します。
-        </p>
       </div>
 
-      <div className="result-box" style={{ marginBottom: 16 }}>
-        <h3>イベント JSON 作成</h3>
-        <p className="hint">
-          「試合を走査して取得」はリプレイを先頭から高速再生し、序盤〜終盤のイベントを蓄積します（終端 Seek
-          だけでは Live Client に序盤が入らないことがあります）。Replay API が必要です（
-          <span className="mono">game.cfg</span> の <span className="mono">[General]</span> に{" "}
-          <span className="mono">EnableReplayApi=1</span>）。JSON は生データのまま、戦闘統合は切り分け時です。
-        </p>
-        <p className="mono">{liveLabel}</p>
-        {live?.warning ? <p className="hint">{live.warning}</p> : null}
+      <div className="result-box">
+        <h3>イベント</h3>
+        <p className="status-line mono">{liveLabel}</p>
+        {live?.warning ? <p className="error">{live.warning}</p> : null}
         <div className="row">
           <button className="btn primary" disabled={busy} onClick={() => refreshLive({ harvest: true })}>
-            {busy ? "走査中…" : "試合を走査して取得"}
+            {busy ? "走査中…" : "試合を走査"}
           </button>
           <button className="btn" disabled={busy} onClick={() => refreshLive({ harvest: false })}>
             現在位置のみ
@@ -543,9 +498,9 @@ export function AutoSplitPage() {
         </div>
       </div>
 
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="row actions">
         <label>
-          前後パディング（秒）{" "}
+          前後秒{" "}
           <input
             className="text-input narrow"
             type="number"
@@ -555,7 +510,7 @@ export function AutoSplitPage() {
           />
         </label>
         <label>
-          戦闘マージ間隔（秒）{" "}
+          マージ秒{" "}
           <input
             className="text-input narrow"
             type="number"
@@ -568,7 +523,7 @@ export function AutoSplitPage() {
           ドライラン
         </button>
         <button className="btn primary" disabled={busy} onClick={() => run(false)}>
-          自動切り分け実行
+          実行
         </button>
       </div>
 
@@ -578,33 +533,16 @@ export function AutoSplitPage() {
           <p className="success">
             {result.clip_count} クリップ
             {result.game_id ? ` · ${result.game_id}` : ""}
-            {result.converted ? " · webm→mp4 変換済み" : ""} → {result.output_dir}
+            {result.converted ? " · 変換済み" : ""}
           </p>
-          <ul>
+          <p className="mono path-preview">{result.output_dir}</p>
+          <ul className="clip-list">
             {result.clips.map((c) => (
-              <li key={c.output_path}>
-                <span className="mono">
-                  {c.kind} {c.start_sec.toFixed(0)}-{c.end_sec.toFixed(0)}s
-                  {c.label ? ` (${c.label})` : ""}
-                </span>{" "}
-                {c.output_path}
+              <li key={c.output_path} className="mono">
+                {c.label || c.kind} · {c.start_sec.toFixed(0)}–{c.end_sec.toFixed(0)}s
               </li>
             ))}
           </ul>
-          {result.event_coverage ? (
-            <div className="hint" style={{ marginTop: 8 }}>
-              <p>
-                イベント JSON: {result.event_coverage.total_events ?? 0} 件 / クリップ対象{" "}
-                {JSON.stringify(result.event_coverage.used_for_clips ?? {})}
-              </p>
-              {result.event_coverage.ignored &&
-              Object.keys(result.event_coverage.ignored).length > 0 ? (
-                <p>
-                  未使用（GameStart 等）: {JSON.stringify(result.event_coverage.ignored)}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       ) : null}
     </section>

@@ -155,10 +155,17 @@ class ChartsRequest(BaseModel):
 class UiPreferencesModel(BaseModel):
     fixed_target_rofl: str | None = None
     last_source_dir: str | None = None
+    last_replays_dir: str | None = None
     last_video_dir: str | None = None
     last_events_dir: str | None = None
     last_output_root: str | None = None
     last_game_id: str | None = None
+
+
+class LocalReplaysResponse(BaseModel):
+    directory: str
+    default_directory: str
+    items: list[LocalReplayItem]
 
 
 class ListDirRequest(BaseModel):
@@ -214,3 +221,12 @@ class FfmpegSettingsModel(BaseModel):
     quality: Literal["light", "standard", "high"] = "standard"
     encoder: Literal["auto", "nvenc", "qsv", "amf", "cpu"] = "auto"
     auto_convert_webm: bool = True
+
+
+class FfmpegInstallRequest(BaseModel):
+    destination: str | None = None
+
+
+class FfmpegMoveRequest(BaseModel):
+    destination: str
+    source_exe: str | None = None
