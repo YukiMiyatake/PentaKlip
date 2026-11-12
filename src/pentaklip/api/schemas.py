@@ -214,3 +214,12 @@ class FfmpegSettingsModel(BaseModel):
     quality: Literal["light", "standard", "high"] = "standard"
     encoder: Literal["auto", "nvenc", "qsv", "amf", "cpu"] = "auto"
     auto_convert_webm: bool = True
+
+
+class FfmpegInstallRequest(BaseModel):
+    destination: str | None = None
+
+
+class FfmpegMoveRequest(BaseModel):
+    destination: str
+    source_exe: str | None = None

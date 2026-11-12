@@ -25,6 +25,8 @@ from pentaklip.api.schemas import (
     DetectResponse,
     ExportEventsRequest,
     ExportEventsResponse,
+    FfmpegInstallRequest,
+    FfmpegMoveRequest,
     FfmpegSettingsModel,
     FinalizeStatsRequest,
     FinalizeStatsResponse,
@@ -96,6 +98,7 @@ from pentaklip.tools.ffmpeg_setup import (
     add_discovered_ffmpeg_to_path,
     get_ffmpeg_status,
     install_ffmpeg_winget,
+    move_ffmpeg_install,
 )
 
 
@@ -554,12 +557,46 @@ def api_ffmpeg_status() -> dict:
     return get_ffmpeg_status().model_dump()
 
 
+def _persist_ffmpeg_path(ffmpeg_path: str | None) -> None:
+    """Update saved ffmpeg_path while keeping other encoding preferences."""
+    if not ffmpeg_path:
+        return
+    current = load_ffmpeg_settings(settings.data_dir)
+    save_ffmpeg_settings(
+        settings.data_dir,
+        current.model_copy(update={"ffmpeg_path": ffmpeg_path}),
+    )
+
+
 @app.post("/api/tools/ffmpeg/install")
-def api_ffmpeg_install() -> dict:
+def api_ffmpeg_install(body: FfmpegInstallRequest | None = None) -> dict:
+    destination = body.destination if body is not None else None
     try:
-        result = install_ffmpeg_winget()
+        result = install_ffmpeg_winget(destination=destination)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"ffmpeg install failed: {exc}") from exc
+    if result.get("ok") and result.get("ffmpeg_path"):
+        _persist_ffmpeg_path(str(result["ffmpeg_path"]))
+    return result
+
+
+@app.post("/api/tools/ffmpeg/move")
+def api_ffmpeg_move(body: FfmpegMoveRequest) -> dict:
+    try:
+        result = move_ffmpeg_install(
+            body.destination,
+            source_exe=body.source_exe,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to move ffmpeg: {exc}") from exc
+    if result.get("ffmpeg_path"):
+        _persist_ffmpeg_path(str(result["ffmpeg_path"]))
     return result
 
 
