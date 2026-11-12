@@ -252,7 +252,7 @@ curl -X POST http://127.0.0.1:8787/api/clips/create `
 - `POST /api/stats/aggregate` … 集計のみ
 - `POST /api/stats/charts` … グラフ化のみ（集計結果 + レーン別表示設定）。`radar` / `lane_compare` / `table` / `line`
   - レーダーは各プレイヤー（塗り）とレーン平均（点線）。API 位置キー `UTILITY` の表示名は **SUPPORT**
-  - Live Client 制約: **DPM / DMG% / GPM / GD15 / XPD15 は取得不可**。代わりにデフォルト軸は `CSM / KDA / KP% / CSD15 / LVLD15 / VSPM / CS@15 / Vision Score`（CSD15 は対戦レーン相手との 15 分 CS 差、LVLD15 はレベル差で XPD15 の近似。Towers / OBJ はデフォルト非表示）
+  - Live Client 制約: **GPM / GD15 / XPD15 は取得不可**。**DPM / DMG%** は終了画面『データ』タブの `{game_id}*.png` OCR（未取得時はレーダーから当該軸を省略し KP% / VSPM を残す）。デフォルトレーダー軸は `CSM / KDA / KP% / CSD15 / LVLD15 / DPM / DMG% / VSPM`。テーブル既定は Champion / KDA / KP% / CSM / CSD15 / LVLD15 / DPM / DMG% / VSPM（JG に Dragon/Baron/Herald、SUP は Vision Score を優先）。CS@15 / CS 生値 / Level / OBJ / Towers 等は表示設定のオプション
   - `Gold (active)` は観戦中アクティブプレイヤーの所持金のみ（獲得ゴールドではない）
 - `GET/PUT /api/stats/display-settings` … レーンごとに表示するスタッツを設定（ジャングルはオブジェクト・CS・ゴールド等を含むデフォルト）
 

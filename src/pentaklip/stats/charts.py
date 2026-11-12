@@ -6,6 +6,7 @@ from typing import Any
 
 from pentaklip.stats.catalog import (
     LCK_RADAR_STAT_KEYS,
+    OCR_RADAR_STAT_KEYS,
     SERIES_STAT_KEYS,
     SIGNED_RADAR_STAT_KEYS,
     STAT_LABELS,
@@ -141,11 +142,26 @@ def _lane_compare_chart(
     )
 
 
-def _radar_axis_keys(columns: list[StatKey]) -> list[StatKey]:
-    """Prefer LCK octagon order, then remaining selected table columns."""
+def _radar_axis_keys(
+    columns: list[StatKey],
+    *,
+    players: list[PlayerPositionAggregate] | None = None,
+) -> list[StatKey]:
+    """Prefer LCK octagon order; drop OCR damage axes when no DPM/DMG% data."""
     usable = [k for k in columns if k not in _COMPARE_SKIP and k not in SERIES_STAT_KEYS]
     preferred = [k for k in LCK_RADAR_STAT_KEYS if k in usable]
+    has_damage = False
+    if players is not None:
+        has_damage = any(
+            p.scalars.get(StatKey.DPM.value) is not None
+            or p.scalars.get(StatKey.DAMAGE_SHARE.value) is not None
+            for p in players
+        )
+        if not has_damage:
+            preferred = [k for k in preferred if k not in OCR_RADAR_STAT_KEYS]
     rest = [k for k in usable if k not in preferred]
+    if not has_damage:
+        rest = [k for k in rest if k not in OCR_RADAR_STAT_KEYS]
     return [*preferred, *rest][:_RADAR_MAX_AXES]
 
 
@@ -208,7 +224,7 @@ def _radar_charts_for_position(
 
     Each row is one axis with raw + normalized values for Recharts RadarChart.
     """
-    axes = _radar_axis_keys(columns)
+    axes = _radar_axis_keys(columns, players=players)
     if len(axes) < 3 or not players:
         return []
 
