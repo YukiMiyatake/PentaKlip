@@ -4,6 +4,8 @@ import {
   getFfmpegSettings,
   getFfmpegStatus,
   installFfmpeg,
+  moveFfmpeg,
+  pickDirectory,
   putFfmpegSettings,
   resetFfmpegSettings,
 } from "../api";
@@ -23,9 +25,18 @@ const ENCODER_OPTIONS: Array<{ value: FfmpegEncoder; label: string; hint: string
   { value: "cpu", label: "CPU", hint: "libx264" },
 ];
 
+function parentDir(path: string | null | undefined): string {
+  if (!path) return "";
+  const normalized = path.replace(/[/\\]+$/, "");
+  const idx = Math.max(normalized.lastIndexOf("\\"), normalized.lastIndexOf("/"));
+  return idx > 0 ? normalized.slice(0, idx) : normalized;
+}
+
 export function ToolsPage() {
   const [status, setStatus] = useState<FfmpegStatus | null>(null);
   const [settings, setSettings] = useState<FfmpegSettings | null>(null);
+  const [installDir, setInstallDir] = useState("");
+  const [moveDir, setMoveDir] = useState("");
   const [log, setLog] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,22 +46,61 @@ export function ToolsPage() {
     const [st, cfg] = await Promise.all([getFfmpegStatus(), getFfmpegSettings()]);
     setStatus(st);
     setSettings(cfg);
+    if (!installDir && (cfg.ffmpeg_path || st.path)) {
+      const exeParent = parentDir(cfg.ffmpeg_path || st.path || "");
+      const guessed = /[/\\]bin$/i.test(exeParent) ? parentDir(exeParent) : exeParent;
+      if (guessed) setInstallDir(guessed);
+    }
   }
 
   useEffect(() => {
     refresh().catch((err) => setError(String(err)));
   }, []);
 
+  async function browseInstallDir() {
+    setError(null);
+    try {
+      const picked = await pickDirectory({
+        title: "ffmpeg のインストール先を選択",
+        initial: installDir || null,
+      });
+      if (picked.cancelled || !picked.path) return;
+      setInstallDir(picked.path);
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function browseMoveDir() {
+    setError(null);
+    try {
+      const picked = await pickDirectory({
+        title: "ffmpeg の移動先フォルダを選択",
+        initial: moveDir || installDir || null,
+      });
+      if (picked.cancelled || !picked.path) return;
+      setMoveDir(picked.path);
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   async function onInstall() {
     setBusy(true);
     setError(null);
     setLog(null);
+    setSavedNote(null);
     try {
-      const result = await installFfmpeg();
+      const destination = installDir.trim() || null;
+      const result = await installFfmpeg({ destination });
       setStatus(result.status);
+      if (result.ffmpeg_path && settings) {
+        setSettings({ ...settings, ffmpeg_path: result.ffmpeg_path });
+      }
       const summary = [
         `ok=${String(result.ok ?? result.returncode === 0)}`,
         `winget exit=${result.returncode}`,
+        destination ? `destination=${destination}` : "",
         result.stdout || "",
         result.stderr || "",
       ]
@@ -61,7 +111,53 @@ export function ToolsPage() {
         setError(
           "インストールに失敗したか、まだ ffmpeg が見つかりません。ログを確認するか、手動で winget install --id Gyan.FFmpeg -e を実行してください。",
         );
+      } else if (result.ffmpeg_path) {
+        setSavedNote(`ffmpeg パスを保存しました: ${result.ffmpeg_path}`);
+        await refresh();
       }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onMove() {
+    const destination = moveDir.trim();
+    if (!destination) {
+      setError("移動先フォルダを参照で選んでください");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setLog(null);
+    setSavedNote(null);
+    try {
+      const result = await moveFfmpeg({
+        destination,
+        source_exe: settings?.ffmpeg_path || status?.path || null,
+      });
+      setStatus(result.status);
+      if (result.ffmpeg_path && settings) {
+        setSettings({ ...settings, ffmpeg_path: result.ffmpeg_path });
+      }
+      setLog(
+        [
+          result.message || "",
+          result.source_root ? `from: ${result.source_root}` : "",
+          result.destination ? `to: ${result.destination}` : "",
+          result.ffmpeg_path ? `exe: ${result.ffmpeg_path}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      setSavedNote(
+        result.moved
+          ? `移動しました。設定パスを更新済み: ${result.ffmpeg_path}`
+          : result.message || "移動はスキップされました",
+      );
+      if (result.destination) setInstallDir(result.destination);
+      await refresh();
     } catch (err) {
       setError(String(err));
     } finally {
@@ -157,16 +253,52 @@ export function ToolsPage() {
         ) : null}
       </div>
 
-      <div className="row actions">
-        <button className="btn" disabled={busy} onClick={() => refresh().catch((e) => setError(String(e)))}>
-          再確認
-        </button>
-        <button className="btn primary" disabled={busy} onClick={onInstall}>
-          winget でインストール
-        </button>
-        <button className="btn" disabled={busy} onClick={onAddPath}>
-          PATH に追加
-        </button>
+      <div className="result-box">
+        <h3>インストール先</h3>
+        <div className="row">
+          <input
+            className="text-input grow"
+            placeholder="例: D:\\Tools\\ffmpeg（空なら winget 既定）"
+            value={installDir}
+            onChange={(e) => setInstallDir(e.target.value)}
+          />
+          <button className="btn" disabled={busy} onClick={() => browseInstallDir()}>
+            参照…
+          </button>
+        </div>
+        <div className="row actions">
+          <button className="btn" disabled={busy} onClick={() => refresh().catch((e) => setError(String(e)))}>
+            再確認
+          </button>
+          <button className="btn primary" disabled={busy} onClick={onInstall}>
+            winget でインストール
+          </button>
+          <button className="btn" disabled={busy} onClick={onAddPath}>
+            PATH に追加
+          </button>
+        </div>
+      </div>
+
+      <div className="result-box">
+        <h3>フォルダを移動</h3>
+        <div className="row">
+          <input
+            className="text-input grow"
+            placeholder="移動先（例: D:\\Tools\\ffmpeg）"
+            value={moveDir}
+            onChange={(e) => setMoveDir(e.target.value)}
+          />
+          <button className="btn" disabled={busy} onClick={() => browseMoveDir()}>
+            参照…
+          </button>
+          <button
+            className="btn primary"
+            disabled={busy || !moveDir.trim() || !(settings?.ffmpeg_path || status?.path)}
+            onClick={onMove}
+          >
+            この場所へ移動
+          </button>
+        </div>
       </div>
 
       <div className="result-box">
@@ -177,7 +309,7 @@ export function ToolsPage() {
             <div className="row">
               <input
                 className="text-input grow"
-                placeholder="C:\...\ffmpeg.exe"
+                placeholder="C:\\...\\ffmpeg.exe"
                 value={settings.ffmpeg_path ?? ""}
                 onChange={(e) =>
                   setSettings({ ...settings, ffmpeg_path: e.target.value || null })
