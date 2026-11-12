@@ -18,8 +18,9 @@ LoL リプレイからキル・集団戦などのハイライトを検出し、�
 ## 開発フロー
 
 - タスクごとに `feature/<名前>` ブランチを切り、`main` へ PR する（[`.cursor/rules/pr-per-task.mdc`](.cursor/rules/pr-per-task.mdc)）
-- PR には `feature` / `fix` / `chore` / `docs` / `ci` のいずれかのラベルが必要
-- 上記タイプラベル付き PR は CI 成功後に自動で squash マージされる
+- PR 作成時に `feature` / `fix` / `chore` / `docs` / `ci` のいずれかを **必ず付与**する（例: `gh pr create --label feature`）
+- タイプラベル付き・非 draft・CI 成功の PR は GitHub Actions が **自動で squash マージ**する（手動マージは原則不要）
+- ラベル無しだと PR label gate が失敗し自動マージされない
 - 詳細は [`.github/LABELS.md`](.github/LABELS.md)
 
 ## 初回セットアップ
@@ -94,7 +95,7 @@ python -m pentaklip
 |------|------|
 | 置き換え | LoL Replays フォルダ（パス表示・参照で変更・記憶）を置き換え先にし、ダウンロードした .rofl を上書きコピー（元ゲーム ID を DB 保存） |
 | 自動切り分け | 録画動画 + イベント JSON からハイライト検出し ffmpeg で自動クリップ |
-| ffmpeg | インストール（winget）・PATH 追加・簡易設定（品質 / パス / webm自動変換） |
+| ffmpeg | インストール先指定（参照）・フォルダ移動・PATH 追加・簡易設定（品質 / パス / webm自動変換） |
 | スタッツ / 表示設定 | 集計結果の表・グラフとレーン別表示設定 |
 
 ```powershell
