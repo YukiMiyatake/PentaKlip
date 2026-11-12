@@ -5,7 +5,6 @@ import {
   getLiveEvents,
   harvestEvents,
   getUiPreferences,
-  inspectRofl,
   listDir,
   pickDirectory,
   putUiPreferences,
@@ -18,6 +17,7 @@ import type {
 } from "../types";
 
 const GAME_ID_RE = /([A-Za-z0-9]+-\d+)/;
+const VIDEO_SUFFIXES = [".mp4", ".mkv", ".mov", ".avi", ".webm"];
 
 function inferGameIdFromName(name: string | null | undefined): string {
   if (!name) return "";
@@ -51,22 +51,55 @@ export function AutoSplitPage() {
   const [exportFilename, setExportFilename] = useState("events.json");
   const [includeStats, setIncludeStats] = useState(true);
   const [exportNote, setExportNote] = useState<string | null>(null);
-  
   const [prefsSavedNote, setPrefsSavedNote] = useState<string | null>(null);
   const rememberTimer = useRef<number | null>(null);
-  const folderStateRef = useRef({ outputRoot: "", videoDir: "", eventsDir: "", gameId: "" });
+  const folderStateRef = useRef({ outputRoot: "", videoDir: "", eventsDir: "" });
 
-  async function fillGameIdFromRofl(roflPath: string | null | undefined, fallbackId?: string | null) {
-    if (fallbackId) setGameId(fallbackId);
-    if (!roflPath) return;
+  async function listEvents(dir: string) {
     try {
-      const overview = await inspectRofl(roflPath);
-      if (!fallbackId && overview.match_id) setGameId(overview.match_id);
+      const listed = await listDir(dir, [".json"]);
+      setEventsDir(listed.directory);
+      setEventFiles(listed.entries.filter((e) => !e.is_dir));
+      return listed.directory;
     } catch {
-      if (!fallbackId) {
-        const inferred = inferGameIdFromName(roflPath);
-        if (inferred) setGameId(inferred);
-      }
+      setEventsDir(dir);
+      setEventFiles([]);
+      return dir;
+    }
+  }
+
+  async function listVideos(dir: string) {
+    try {
+      const listed = await listDir(dir, VIDEO_SUFFIXES);
+      setVideoDir(listed.directory);
+      setVideos(listed.entries.filter((e) => !e.is_dir));
+      return listed.directory;
+    } catch {
+      setVideoDir(dir);
+      setVideos([]);
+      return dir;
+    }
+  }
+
+  /** Wire Event/ + Replay/ under the output base and refresh lists. */
+  async function applyOutputRoot(root: string, opts?: { persist?: boolean }) {
+    const persist = opts?.persist !== false;
+    const trimmed = root.trim();
+    if (!trimmed) return;
+    const eventDir = joinOsPath(trimmed, "Event");
+    const replayDir = joinOsPath(trimmed, "Replay");
+    setOutputRoot(trimmed);
+    const [resolvedEvents, resolvedVideos] = await Promise.all([
+      listEvents(eventDir),
+      listVideos(replayDir),
+    ]);
+    if (persist) {
+      await rememberPrefs({
+        last_output_root: trimmed,
+        last_events_dir: resolvedEvents,
+        last_video_dir: resolvedVideos,
+      });
+      setPrefsSavedNote("出力を保存しました");
     }
   }
 
@@ -74,31 +107,16 @@ export function AutoSplitPage() {
     getUiPreferences()
       .then(async (p) => {
         setPrefs(p);
-        if (p.last_output_root) setOutputRoot(p.last_output_root);
-        await fillGameIdFromRofl(p.fixed_target_rofl, p.last_game_id);
-        if (p.last_video_dir) {
-          setVideoDir(p.last_video_dir);
-          try {
-            const listed = await listDir(p.last_video_dir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
-            setVideos(listed.entries.filter((e) => !e.is_dir));
-          } catch {
-            // Keep remembered path even if the folder is temporarily missing.
-          }
-        }
-        const eventDir =
-          p.last_events_dir ||
-          (p.last_output_root ? joinOsPath(p.last_output_root, "Event") : "");
-        if (eventDir) {
-          setEventsDir(eventDir);
-          try {
-            const listed = await listDir(eventDir, [".json"]);
-            setEventFiles(listed.entries.filter((e) => !e.is_dir));
-          } catch {
-            // Keep remembered path even if the folder is temporarily missing.
-          }
+        if (p.last_game_id) setGameId(p.last_game_id);
+        if (p.last_output_root) {
+          await applyOutputRoot(p.last_output_root, { persist: false });
+        } else {
+          if (p.last_video_dir) await listVideos(p.last_video_dir);
+          if (p.last_events_dir) await listEvents(p.last_events_dir);
         }
       })
       .catch((err) => setError(String(err)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
 
   async function persist(next: UiPreferences) {
@@ -122,19 +140,18 @@ export function AutoSplitPage() {
     return persist(next);
   }
 
-  folderStateRef.current = { outputRoot, videoDir, eventsDir, gameId };
+  folderStateRef.current = { outputRoot, videoDir, eventsDir };
 
   async function rememberFoldersFromInputs() {
     const snap = folderStateRef.current;
-    const partial: Partial<UiPreferences> = {};
     const root = snap.outputRoot.trim();
-    const video = snap.videoDir.trim();
-    const events = snap.eventsDir.trim() || (root ? joinOsPath(root, "Event") : "");
-    const gid = snap.gameId.trim();
-    if (root) partial.last_output_root = root;
-    if (video) partial.last_video_dir = video;
-    if (events) partial.last_events_dir = events;
-    if (gid) partial.last_game_id = gid;
+    if (root) {
+      await applyOutputRoot(root, { persist: true });
+      return;
+    }
+    const partial: Partial<UiPreferences> = {};
+    if (snap.videoDir.trim()) partial.last_video_dir = snap.videoDir.trim();
+    if (snap.eventsDir.trim()) partial.last_events_dir = snap.eventsDir.trim();
     if (Object.keys(partial).length === 0) return;
     await rememberPrefs(partial);
     setPrefsSavedNote("フォルダ設定を保存しました");
@@ -147,92 +164,63 @@ export function AutoSplitPage() {
     }, 400);
   }
 
-  async function browseFolder(
-    kind: "output" | "video" | "events",
-  ) {
+  function resolvedGameId(): string {
+    return (
+      gameId.trim() ||
+      live?.game_id?.trim() ||
+      prefs?.last_game_id?.trim() ||
+      inferGameIdFromName(eventsPath) ||
+      inferGameIdFromName(videoPath) ||
+      ""
+    );
+  }
+
+  async function browseOutput() {
     setError(null);
-    const initial =
-      kind === "output" ? outputRoot : kind === "video" ? videoDir : eventsDir;
-    const title =
-      kind === "output"
-        ? "出力ベースを選択"
-        : kind === "video"
-          ? "動画フォルダを選択"
-          : "イベント JSON フォルダを選択";
     try {
-      const picked = await pickDirectory({ title, initial: initial || null });
-      if (picked.cancelled || !picked.path) return;
-      if (kind === "output") {
-        setOutputRoot(picked.path);
-        const eventDir = joinOsPath(picked.path, "Event");
-        setEventsDir(eventDir);
-        try {
-          const listed = await listDir(eventDir, [".json"]);
-          setEventFiles(listed.entries.filter((e) => !e.is_dir));
-        } catch {
-          setEventFiles([]);
-        }
-        await rememberPrefs({
-          last_output_root: picked.path,
-          last_events_dir: eventDir,
-        });
-        setPrefsSavedNote("出力ベースを保存しました（Event / Replay / stats / Clip）");
-        return;
-      }
-      if (kind === "video") {
-        setVideoDir(picked.path);
-        const listed = await listDir(picked.path, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
-        setVideoDir(listed.directory);
-        setVideos(listed.entries.filter((e) => !e.is_dir));
-        await rememberPrefs({ last_video_dir: listed.directory });
-        setPrefsSavedNote("動画フォルダを保存しました");
-        return;
-      }
-      setEventsDir(picked.path);
-      const listed = await listDir(picked.path, [".json"]);
-      setEventsDir(listed.directory);
-      setEventFiles(listed.entries.filter((e) => !e.is_dir));
-      const inferred = inferGameIdFromName(listed.directory);
-      if (inferred && !gameId) setGameId(inferred);
-      await rememberPrefs({
-        last_events_dir: listed.directory,
-        last_game_id: inferred || gameId.trim() || null,
+      const picked = await pickDirectory({
+        title: "出力ベースを選択",
+        initial: outputRoot || null,
       });
-      setPrefsSavedNote("イベントフォルダを保存しました");
+      if (picked.cancelled || !picked.path) return;
+      await applyOutputRoot(picked.path, { persist: true });
     } catch (err) {
       setError(String(err));
     }
   }
 
-  async function loadVideos() {
-    const listed = await listDir(videoDir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
-    setVideoDir(listed.directory);
-    setVideos(listed.entries.filter((e) => !e.is_dir));
-    await rememberPrefs({ last_video_dir: listed.directory });
-  }
-
-  async function loadEvents() {
-    const listed = await listDir(eventsDir, [".json"]);
-    setEventsDir(listed.directory);
-    setEventFiles(listed.entries.filter((e) => !e.is_dir));
-    const inferred = inferGameIdFromName(listed.directory);
-    if (inferred && !gameId) setGameId(inferred);
-    await rememberPrefs({
-      last_events_dir: listed.directory,
-      last_game_id: inferred || gameId.trim() || null,
-    });
+  async function browseVideoOverride() {
+    setError(null);
+    try {
+      const picked = await pickDirectory({
+        title: "動画フォルダを選択",
+        initial: videoDir || null,
+      });
+      if (picked.cancelled || !picked.path) return;
+      const resolved = await listVideos(picked.path);
+      await rememberPrefs({ last_video_dir: resolved });
+      setPrefsSavedNote("動画フォルダを更新しました");
+    } catch (err) {
+      setError(String(err));
+    }
   }
 
   function selectVideo(path: string, name: string) {
     setVideoPath(path);
     const inferred = inferGameIdFromName(name) || inferGameIdFromName(path);
-    if (inferred) setGameId(inferred);
+    if (inferred) {
+      setGameId(inferred);
+      rememberPrefs({ last_game_id: inferred }).catch(() => {});
+    }
   }
 
   function selectEvents(path: string) {
     setEventsPath(path);
     const inferred = inferGameIdFromName(path);
-    if (inferred) setGameId(inferred);
+    if (inferred) {
+      setGameId(inferred);
+      rememberPrefs({ last_game_id: inferred }).catch(() => {});
+    }
   }
 
   async function refreshLive(opts?: { harvest?: boolean }) {
@@ -242,7 +230,10 @@ export function AutoSplitPage() {
     try {
       const status = doHarvest ? await harvestEvents(16) : await getLiveEvents();
       setLive(status);
-      if (!gameId && status.game_id) setGameId(status.game_id);
+      if (status.game_id) {
+        setGameId(status.game_id);
+        await rememberPrefs({ last_game_id: status.game_id });
+      }
       if (status.warning) setExportNote(status.warning);
     } catch (err) {
       setError(String(err));
@@ -252,52 +243,39 @@ export function AutoSplitPage() {
   }
 
   async function saveEventsJson() {
-    if (!gameId.trim()) {
-      setError("ゲームIDを入力してください（例: JP1-1234567890）");
+    const gid = resolvedGameId();
+    if (!gid) {
+      setError("ゲームIDを特定できません（Live Client / 動画・イベント名 / 前回ID）");
+      return;
+    }
+    if (!outputRoot.trim()) {
+      setError("出力ベースを選んでください");
       return;
     }
     setBusy(true);
     setError(null);
     setExportNote(null);
     try {
-      await rememberFoldersFromInputs();
+      await applyOutputRoot(outputRoot.trim(), { persist: true });
       const response = await exportEvents({
-        directory: outputRoot || null,
+        directory: outputRoot.trim(),
         filename: exportFilename || "events.json",
-        game_id: gameId.trim(),
+        game_id: gid,
         include_stats: includeStats,
         harvest: true,
         harvest_speed: 16,
       });
-      const statsBits = [
-        response.stats_bundle_path
-          ? response.stats_bundle_path.replace(/^.*[/\\]/, "")
-          : null,
-        response.stats_aggregated_path
-          ? response.stats_aggregated_path.replace(/^.*[/\\]/, "")
-          : null,
-      ].filter(Boolean);
+      setGameId(response.game_id);
       setExportNote(
-        `保存しました: ${response.path}（${response.event_count} イベント / ${response.game_id}）` +
-          (statsBits.length
-            ? ` + スタッツ（${statsBits.join(", ")}${
-                response.player_count != null ? ` / ${response.player_count}人` : ""
-              }）`
-            : includeStats
-              ? "（スタッツは allgamedata 未取得のためスキップ）"
-              : ""),
+        `保存 · ${response.event_count} イベント · ${response.game_id}` +
+          (response.stats_aggregated_path ? " · スタッツあり" : ""),
       );
       setEventsPath(response.path);
       setEventsDir(response.game_dir);
-      const baseRoot =
-        outputRoot.trim() ||
-        response.game_dir.replace(/[/\\]Event[/\\]?$/i, "").replace(/[/\\][^/\\]+$/, "");
-      if (baseRoot) setOutputRoot(baseRoot);
-      const listed = await listDir(response.game_dir, [".json"]);
-      setEventFiles(listed.entries.filter((e) => !e.is_dir));
+      await listEvents(response.game_dir);
       await rememberPrefs({
         last_events_dir: response.game_dir,
-        last_output_root: baseRoot || null,
+        last_output_root: outputRoot.trim(),
         last_game_id: response.game_id,
       });
     } catch (err) {
@@ -313,7 +291,7 @@ export function AutoSplitPage() {
       return;
     }
     if (!eventsPath) {
-      setError("イベント JSON を選択してください（下の収集、または既存ファイル）");
+      setError("イベント JSON を選択してください");
       return;
     }
     setBusy(true);
@@ -323,7 +301,7 @@ export function AutoSplitPage() {
       const response = await autoSplitClips({
         source_video_path: videoPath,
         events_path: eventsPath,
-        original_match_id: gameId.trim() || null,
+        original_match_id: resolvedGameId() || null,
         padding_before_sec: padding,
         padding_after_sec: padding,
         merge_gap_sec: mergeGap,
@@ -331,7 +309,11 @@ export function AutoSplitPage() {
         dry_run: dryRun,
       });
       setResult(response);
-      if (response.game_id) setGameId(response.game_id);
+      if (response.game_id) {
+        setGameId(response.game_id);
+        await rememberPrefs({ last_game_id: response.game_id });
+      }
+      if (outputRoot.trim()) await listVideos(joinOsPath(outputRoot.trim(), "Replay"));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -340,18 +322,15 @@ export function AutoSplitPage() {
   }
 
   const liveLabel = live?.available
-    ? `接続中 · ${live.event_count} イベント` +
-      (live.game_time_sec != null ? ` · ゲーム時間 ${live.game_time_sec.toFixed(0)}s` : "") +
-      (live.player_count != null ? ` · ${live.player_count}人` : "") +
-      (live.game_id ? ` · id ${live.game_id}` : "") +
-      (live.source ? ` · ${live.source}` : "")
+    ? `接続中 · ${live.event_count} 件` +
+      (live.game_id ? ` · ${live.game_id}` : "") +
+      (live.game_time_sec != null ? ` · ${live.game_time_sec.toFixed(0)}s` : "")
     : live?.error
       ? `未接続 · ${live.error}`
       : "未取得";
 
-  const base = outputRoot.replace(/[/\\]+$/, "") || "{出力ベース}";
-  const gid = gameId.trim() || "{ゲームID}";
-  const outputPreview = `${base}\\Event|Replay|stats|Clip\\${gid}`;
+  const gid = resolvedGameId() || "…";
+  const base = outputRoot.replace(/[/\\]+$/, "") || "…";
 
   return (
     <section className="panel">
@@ -367,36 +346,21 @@ export function AutoSplitPage() {
             onChange={(e) => {
               const next = e.target.value;
               setOutputRoot(next);
-              if (next.trim()) setEventsDir(joinOsPath(next.trim(), "Event"));
+              if (next.trim()) {
+                setEventsDir(joinOsPath(next.trim(), "Event"));
+                setVideoDir(joinOsPath(next.trim(), "Replay"));
+              }
               scheduleRememberFolders();
             }}
             onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
           />
-          <button className="btn" disabled={busy} onClick={() => browseFolder("output")}>
+          <button className="btn" disabled={busy} onClick={() => browseOutput()}>
             参照…
           </button>
-          <input
-            className="text-input"
-            style={{ width: 220 }}
-            placeholder="ゲームID"
-            value={gameId}
-            onChange={(e) => {
-              setGameId(e.target.value);
-              scheduleRememberFolders();
-            }}
-            onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
-          />
-          <button
-            className="btn"
-            disabled={busy || !prefs?.fixed_target_rofl}
-            onClick={() =>
-              fillGameIdFromRofl(prefs?.fixed_target_rofl, null).catch((e) => setError(String(e)))
-            }
-          >
-            ROFLからID
-          </button>
         </div>
-        <p className="path-preview mono">{outputPreview}</p>
+        <p className="path-preview mono">
+          {base}\Event · Replay · stats · Clip\{gid}
+        </p>
         {prefsSavedNote ? <p className="success">{prefsSavedNote}</p> : null}
       </div>
 
@@ -413,7 +377,7 @@ export function AutoSplitPage() {
           </button>
           <input
             className="text-input"
-            style={{ width: 180 }}
+            style={{ width: 160 }}
             placeholder="ファイル名"
             value={exportFilename}
             onChange={(e) => setExportFilename(e.target.value)}
@@ -434,25 +398,14 @@ export function AutoSplitPage() {
       </div>
 
       <div className="split-2">
-        <div>
-          <h3>動画</h3>
-          <div className="row">
-            <input
-              className="text-input grow"
-              value={videoDir}
-              onChange={(e) => {
-                setVideoDir(e.target.value);
-                scheduleRememberFolders();
-              }}
-              onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
-            />
-            <button className="btn" disabled={busy} onClick={() => browseFolder("video")}>
-              参照…
-            </button>
-            <button className="btn" onClick={() => loadVideos().catch((e) => setError(String(e)))}>
-              一覧
+        <div className="stack">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3>動画（Replay）</h3>
+            <button className="btn ghost" disabled={busy} onClick={() => browseVideoOverride()}>
+              別フォルダ…
             </button>
           </div>
+          <p className="path-preview mono">{videoDir || "—"}</p>
           <div className="file-list">
             {videos.map((v) => (
               <button
@@ -465,25 +418,9 @@ export function AutoSplitPage() {
             ))}
           </div>
         </div>
-        <div>
-          <h3>イベント JSON</h3>
-          <div className="row">
-            <input
-              className="text-input grow"
-              value={eventsDir}
-              onChange={(e) => {
-                setEventsDir(e.target.value);
-                scheduleRememberFolders();
-              }}
-              onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
-            />
-            <button className="btn" disabled={busy} onClick={() => browseFolder("events")}>
-              参照…
-            </button>
-            <button className="btn" onClick={() => loadEvents().catch((e) => setError(String(e)))}>
-              一覧
-            </button>
-          </div>
+        <div className="stack">
+          <h3>イベント JSON（Event）</h3>
+          <p className="path-preview mono">{eventsDir || "—"}</p>
           <div className="file-list">
             {eventFiles.map((v) => (
               <button
