@@ -309,19 +309,11 @@ export function AutoSplitPage() {
     }
   }
 
-  async function refreshLive(opts?: { harvest?: boolean }) {
-    const doHarvest = opts?.harvest !== false;
+  async function refreshLive() {
     setBusy(true);
     setError(null);
     setExportNote(null);
     try {
-      if (!doHarvest) {
-        const status = await getLiveEvents();
-        setLive(status);
-        if (status.warning) setExportNote(status.warning);
-        return;
-      }
-
       const root = outputRoot.trim();
       const gid = gameId.trim();
       if (!root) {
@@ -549,11 +541,8 @@ export function AutoSplitPage() {
         <p className="status-line mono">{liveLabel}</p>
         {live?.warning ? <p className="error">{live.warning}</p> : null}
         <div className="row">
-          <button className="btn primary" disabled={busy} onClick={() => refreshLive({ harvest: true })}>
+          <button className="btn primary" disabled={busy} onClick={() => refreshLive()}>
             {busy ? "走査中…" : "試合を走査して保存"}
-          </button>
-          <button className="btn" disabled={busy} onClick={() => refreshLive({ harvest: false })}>
-            現在位置のみ
           </button>
         </div>
         {exportNote ? <p className="success">{exportNote}</p> : null}
