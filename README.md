@@ -18,8 +18,9 @@ LoL リプレイからキル・集団戦などのハイライトを検出し、�
 ## 開発フロー
 
 - タスクごとに `feature/<名前>` ブランチを切り、`main` へ PR する（[`.cursor/rules/pr-per-task.mdc`](.cursor/rules/pr-per-task.mdc)）
-- PR には `feature` / `fix` / `chore` / `docs` / `ci` のいずれかのラベルが必要
-- 上記タイプラベル付き PR は CI 成功後に自動で squash マージされる
+- PR 作成時に `feature` / `fix` / `chore` / `docs` / `ci` のいずれかを **必ず付与**する（例: `gh pr create --label feature`）
+- タイプラベル付き・非 draft・CI 成功の PR は GitHub Actions が **自動で squash マージ**する（手動マージは原則不要）
+- ラベル無しだと PR label gate が失敗し自動マージされない
 - 詳細は [`.github/LABELS.md`](.github/LABELS.md)
 
 ## 初回セットアップ
