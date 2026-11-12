@@ -118,10 +118,10 @@ npm run build
 
 前提: 試合の録画ファイル（`.mp4` / `.webm` など）、イベント JSON、ffmpeg
 
-`.webm` は切り分け実行時にゲームフォルダへ MP4 変換してからカットします（変換済みがあれば再利用）。
+`.webm` は切り分け実行時に `{出力ベース}/Replay/` へ MP4 変換してからカットします（変換済みがあれば再利用）。
 
 1. WebUI「ffmpeg」タブで導入 / PATH 追加
-2. 「自動切り分け」タブで **出力ルート** を設定。ゲームIDは次の優先順で自動取得:
+2. 「自動切り分け」タブで **出力ベース** を設定（配下に `Event` / `Replay` / `stats` / `Clip` を自動作成）。ゲームIDは次の優先順で自動取得:
    - 置き換え時に保存した **元マッチID**（DB）
    - ROFL メタの gameId（あれば）
    - ROFL メタ指紋 `rofl-…`（リネームしても不変）
@@ -129,11 +129,11 @@ npm run build
 3. リプレイを開いた状態で **試合を走査して取得** → JSON 保存
    （Replay API で先頭から高速再生し、Live Client イベントを蓄積。終端 Seek だけでは序盤が欠ける）
    → `game.cfg` の `[General]` に `EnableReplayApi=1` が必要
-   → `{出力ルート}/{ゲームID}/events.json`（衝突時は `ID-1`）
-   → 既定で同フォルダへ `stats_bundle.json` / `stats_aggregated.json` も保存
+   → `{出力ベース}/Event/{ゲームID}_events.json`
+   → 既定で `{出力ベース}/stats/{ゲームID}_stats_bundle.json` / `{ゲームID}_stats_aggregated.json` も保存
    → JSON は生イベントのまま。戦闘統合は切り分け時
 4. 同じタブで動画と events JSON を選択し、ドライラン → 実行
-   → クリップも同じゲームフォルダへ（同名ファイルは `clip-1.mp4`）
+   → クリップは `{出力ベース}/Clip/{ゲームID}/` へ（ファイル名に `1m05s-1m25s` のような時間帯）
    → 近いキル／オブジェクト（既定 25 秒以内）は **1 戦闘 = 1 クリップ** にマージ
    → ドライラン結果に「JSON 内のイベント種別」と「クリップ未使用の種別」を表示
 
@@ -142,7 +142,7 @@ API:
 - `GET /api/events/live` … 現在位置の Live Client イベント（スナップショット）
 - `POST /api/events/harvest` … リプレイ先頭から高速再生してイベント蓄積（`speed` 既定 16）
 - `POST /api/events/export` … イベント JSON 保存（`harvest` / `include_stats` 既定 true）
-- `POST /api/clips/auto-split` … 検出 + 切り出し（未指定時はゲームIDフォルダへ）
+- `POST /api/clips/auto-split` … 検出 + 切り出し（未指定時は `Clip/{ゲームID}` へ）
 
 ## パッケージ構成
 

@@ -46,7 +46,7 @@ from pentaklip.detect.service import detect_from_events, summarize_event_coverag
 from pentaklip.events.harvest import harvest_events_playthrough
 from pentaklip.events.service import export_events_json, fetch_live_events
 from pentaklip.game_id import game_id_from_rofl_path
-from pentaklip.paths import allocate_game_dir, infer_game_id
+from pentaklip.paths import infer_game_id, resolve_output_layout
 from pentaklip.replay.install import (
     install_replay,
     list_local_replays,
@@ -247,14 +247,21 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
         prefs.last_game_id,
     )
 
+    layout = resolve_output_layout(
+        prefs.last_output_root,
+        fallback=settings.resolved_clips_dir(),
+    )
     if body.output_dir:
         output_dir = Path(body.output_dir)
+        replay_dir = layout.replay_dir if prefs.last_output_root else None
+    elif game_id:
+        layout.ensure()
+        output_dir = layout.clip_dir(game_id)
+        replay_dir = layout.replay_dir
     else:
-        root = Path(prefs.last_output_root) if prefs.last_output_root else settings.resolved_clips_dir()
-        if game_id:
-            output_dir = allocate_game_dir(root, game_id)
-        else:
-            output_dir = root
+        layout.ensure()
+        output_dir = layout.clip_root
+        replay_dir = layout.replay_dir
 
     manual = [
         ClipSegment(
@@ -279,6 +286,7 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
             merge_fights=body.merge_fights,
             dry_run=body.dry_run,
             match_id=game_id or body.original_match_id,
+            replay_dir=replay_dir,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -287,14 +295,18 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if game_id and not body.dry_run:
+    if not body.dry_run:
         changed = False
-        if prefs.last_game_id != game_id:
+        if game_id and prefs.last_game_id != game_id:
             prefs.last_game_id = game_id
             changed = True
-        root_for_prefs = str(Path(result.output_dir).parent) if game_id else None
-        if root_for_prefs and prefs.last_output_root != root_for_prefs:
+        root_for_prefs = str(layout.root)
+        if prefs.last_output_root != root_for_prefs:
             prefs.last_output_root = root_for_prefs
+            changed = True
+        event_dir = str(layout.event_dir)
+        if prefs.last_events_dir != event_dir:
+            prefs.last_events_dir = event_dir
             changed = True
         if changed:
             save_ui_preferences(settings.data_dir, prefs)
@@ -385,17 +397,12 @@ def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
 
     output_dir = body.output_dir
     if output_dir is None and game_id:
-        root = Path(prefs.last_output_root) if prefs.last_output_root else settings.resolved_clips_dir()
-        # Prefer same folder as the events file when it already lives under this game.
-        parent_name = events_path.parent.name if events_path else ""
-        if events_path is not None and (
-            parent_name == game_id
-            or parent_name.startswith(f"{game_id}-")
-            or events_meta.get("game_id") == game_id
-        ):
-            output_dir = str(events_path.parent)
-        else:
-            output_dir = str(allocate_game_dir(root, game_id))
+        layout = resolve_output_layout(
+            prefs.last_output_root,
+            fallback=settings.resolved_clips_dir(),
+        )
+        layout.ensure()
+        output_dir = str(layout.clip_dir(game_id))
 
     create_body = CreateClipsRequest(
         source_video_path=body.source_video_path,
@@ -440,11 +447,14 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
     stats_aggregated.json from a one-shot allgamedata snapshot.
     """
     prefs = load_ui_preferences(settings.data_dir)
-    default_root = (
-        Path(prefs.last_output_root)
-        if prefs.last_output_root
-        else (Path(prefs.last_events_dir).parent if prefs.last_events_dir else settings.data_dir / "matches")
-    )
+    if prefs.last_output_root:
+        default_root = Path(prefs.last_output_root)
+    elif prefs.last_events_dir:
+        # New: …/Event ; legacy: …/{gameId} — parent is the output base either way.
+        default_root = Path(prefs.last_events_dir).parent
+    else:
+        default_root = settings.data_dir / "matches"
+    layout = resolve_output_layout(default_root, fallback=default_root)
     db = get_database()
     rofl_id, _ = game_id_from_rofl_path(prefs.fixed_target_rofl, db=db)
     game_id = infer_game_id(
@@ -464,13 +474,13 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
             )
         result = export_events_json(
             output_path=body.output_path,
-            directory=body.directory or str(default_root),
+            directory=body.directory or str(layout.root),
             filename=body.filename,
             events=body.events,
             game_id=game_id,
             game_time_sec=body.game_time_sec,
             source=body.source,
-            default_dir=default_root,
+            default_dir=layout.root,
             include_stats=body.include_stats,
             harvest=body.harvest,
             harvest_speed=body.harvest_speed,
@@ -485,7 +495,12 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
         raise HTTPException(status_code=400, detail=f"Failed to write events JSON: {exc}") from exc
 
     export_dir = str(Path(result.path).parent)
-    root_dir = str(Path(export_dir).parent)
+    # Prefer the configured base (Event's parent), not a legacy nested game folder.
+    root_dir = (
+        str(Path(export_dir).parent)
+        if Path(export_dir).name == "Event"
+        else str(layout.root)
+    )
     changed = False
     if prefs.last_events_dir != export_dir:
         prefs.last_events_dir = export_dir

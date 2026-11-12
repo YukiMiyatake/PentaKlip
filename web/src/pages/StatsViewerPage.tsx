@@ -16,8 +16,13 @@ export function StatsViewerPage() {
   useEffect(() => {
     getUiPreferences()
       .then((p) => {
-        if (p.last_events_dir) setDirectory(p.last_events_dir);
-        else if (p.last_output_root) setDirectory(p.last_output_root);
+        if (p.last_output_root) {
+          const base = p.last_output_root.replace(/[/\\]+$/, "");
+          const sep = p.last_output_root.includes("/") && !p.last_output_root.includes("\\") ? "/" : "\\";
+          setDirectory(`${base}${sep}stats`);
+        } else if (p.last_events_dir) {
+          setDirectory(p.last_events_dir);
+        }
       })
       .catch(() => {
         /* optional */
