@@ -254,7 +254,7 @@ curl -X POST http://127.0.0.1:8787/api/clips/create `
   - レーダーは各プレイヤー（塗り）とレーン平均（点線）。API 位置キー `UTILITY` の表示名は **SUPPORT**
   - Live Client 制約: **GPM / GD15 / XPD15 は取得不可**。**DPM / DMG%** は終了画面『データ』タブの `{game_id}*.png` を `stats/` に置くと、イベント出力時およびスタッツ画面のフォルダ集計時に OCR でマージ（スコアボードでは不可。未取得時はレーダーから DPM/DMG% 軸を省略し KP% / VSPM を残す。Windows OCR: `pip install 'pentaklip[ocr]'`）。デフォルトレーダー軸は `CSM / KDA / KP% / CSD15 / LVLD15 / DPM / DMG% / VSPM`。テーブル既定は Champion / KDA / KP% / CSM / CSD15 / LVLD15 / DPM / DMG% / VSPM（JG に Dragon/Baron/Herald、SUP は Vision Score を優先）。CS@15 / CS 生値 / Level / OBJ / Towers 等は表示設定のオプション
   - `Gold (active)` は観戦中アクティブプレイヤーの所持金のみ（獲得ゴールドではない）
-- `GET/PUT /api/stats/display-settings` … レーンごとに表示するスタッツを設定（ジャングルはオブジェクト・CS・ゴールド等を含むデフォルト）
+- `GET/PUT /api/stats/display-settings` … レーンごとに Table / Radar / 時系列を設定（`radar_by_position` でレーダー軸を明示。未設定時は LCK 8 軸）
 
 ### OBS オーバーレイ（Browser Source）
 

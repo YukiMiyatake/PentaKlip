@@ -147,9 +147,17 @@ def _radar_axis_keys(
     *,
     players: list[PlayerPositionAggregate] | None = None,
 ) -> list[StatKey]:
-    """Prefer LCK octagon order; drop OCR damage axes when no DPM/DMG% data."""
+    """Order radar axes: LCK octagon first, then extras; drop OCR axes without data."""
     usable = [k for k in columns if k not in _COMPARE_SKIP and k not in SERIES_STAT_KEYS]
-    preferred = [k for k in LCK_RADAR_STAT_KEYS if k in usable]
+    # De-dupe while preserving caller order for non-LCK extras.
+    seen: set[StatKey] = set()
+    ordered: list[StatKey] = []
+    for key in [*LCK_RADAR_STAT_KEYS, *usable]:
+        if key not in usable or key in seen:
+            continue
+        seen.add(key)
+        ordered.append(key)
+
     has_damage = False
     if players is not None:
         has_damage = any(
@@ -157,12 +165,9 @@ def _radar_axis_keys(
             or p.scalars.get(StatKey.DAMAGE_SHARE.value) is not None
             for p in players
         )
-        if not has_damage:
-            preferred = [k for k in preferred if k not in OCR_RADAR_STAT_KEYS]
-    rest = [k for k in usable if k not in preferred]
     if not has_damage:
-        rest = [k for k in rest if k not in OCR_RADAR_STAT_KEYS]
-    return [*preferred, *rest][:_RADAR_MAX_AXES]
+        ordered = [k for k in ordered if k not in OCR_RADAR_STAT_KEYS]
+    return ordered[:_RADAR_MAX_AXES]
 
 
 def _mean_scalar(players: list[PlayerPositionAggregate], key: StatKey) -> float | None:
@@ -202,9 +207,12 @@ def _normalize_radar_value(
     *,
     lower_is_better: bool,
     signed: bool = False,
-) -> float | None:
-    if value is None or peak <= 0:
-        return None
+) -> float:
+    # Missing values stay on the chart: signed → center ring, else → zero.
+    if value is None:
+        return 0.5 if signed else 0.0
+    if peak <= 0:
+        return 0.5 if signed else 0.0
     if signed:
         # Map [-peak, +peak] → [0, 1] so even (0) sits at the center ring.
         return max(0.0, min(1.0, (value + peak) / (2.0 * peak)))
@@ -237,10 +245,10 @@ def _radar_charts_for_position(
         for key in axes:
             player_v = _as_number(focus.scalars.get(key.value))
             baseline_v = baseline_vals.get(key.value)
+            # Keep selected radar axes even when a value is missing (avoids
+            # collapsing to 4 spokes when CSD15/LVLD15/OCR are absent).
             present = [v for v in (player_v, baseline_v) if v is not None]
-            if not present:
-                continue
-            peak = max(abs(v) for v in present)
+            peak = max((abs(v) for v in present), default=1.0)
             if peak <= 0:
                 peak = 1.0
             lower = key in _RADAR_LOWER_BETTER
@@ -356,10 +364,11 @@ def build_charts(
             continue
         table_keys = settings.table_by_position.get(position) or []
         chart_keys = settings.charts_by_position.get(position) or []
+        radar_keys = settings.radar_by_position.get(position) or list(LCK_RADAR_STAT_KEYS)
         applied[position.value] = [
             *[f"table:{k.value}" for k in table_keys],
             *[f"compare:{k.value}" for k in table_keys],
-            *[f"radar:{k.value}" for k in _radar_axis_keys(table_keys)],
+            *[f"radar:{k.value}" for k in _radar_axis_keys(radar_keys, players=players)],
             *[f"chart:{k.value}" for k in chart_keys],
         ]
         if table_keys:
@@ -367,9 +376,10 @@ def build_charts(
             compare = _lane_compare_chart(position, players, table_keys)
             if compare is not None:
                 charts.append(compare)
+        if radar_keys:
             charts.extend(
                 _radar_charts_for_position(
-                    position, players, table_keys, all_players=all_players
+                    position, players, radar_keys, all_players=all_players
                 )
             )
         for player in players:
