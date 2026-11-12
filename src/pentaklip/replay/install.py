@@ -45,14 +45,28 @@ class LocalReplayInfo:
 def list_local_replays(replays_dir: Path) -> list[LocalReplayInfo]:
     if not replays_dir.is_dir():
         return []
+    paths = list(replays_dir.glob("*.rofl"))
+
+    def _sort_key(path: Path) -> tuple[int, str]:
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        # Newest first; stable name order for identical timestamps.
+        return (-mtime_ns, path.name.lower())
+
     items: list[LocalReplayInfo] = []
-    for path in sorted(replays_dir.glob("*.rofl")):
+    for path in sorted(paths, key=_sort_key):
+        try:
+            size_bytes = path.stat().st_size
+        except OSError:
+            size_bytes = 0
         items.append(
             LocalReplayInfo(
                 path=path,
                 filename=path.name,
                 match_id=parse_match_id_from_filename(path),
-                size_bytes=path.stat().st_size,
+                size_bytes=size_bytes,
             )
         )
     return items
