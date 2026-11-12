@@ -9,8 +9,8 @@ import {
   listDir,
   listLocalHighlights,
   listLocalReplays,
-  pickDirectory,
   patchUiPreferences,
+  pickDirectory,
 } from "../api";
 import type {
   CreateClipsResponse,
@@ -26,10 +26,43 @@ function joinOsPath(root: string, ...parts: string[]): string {
   return [base, ...parts].join(sep);
 }
 
-function eventMatchesGameId(name: string, gameId: string): boolean {
+function matchesGameId(name: string, gameId: string): boolean {
   const gid = gameId.trim().toLowerCase();
-  if (!gid) return true;
-  return name.toLowerCase().startsWith(`${gid}_`) || name.toLowerCase().includes(gid);
+  if (!gid) return false;
+  const lower = name.toLowerCase();
+  return lower.startsWith(`${gid}_`) || lower.includes(gid.toLowerCase());
+}
+
+function pickBestEvent(files: FsEntry[], gameId: string): FsEntry | null {
+  const gid = gameId.trim().toLowerCase();
+  if (!gid) return null;
+  const matches = files.filter((f) => matchesGameId(f.name, gid));
+  if (!matches.length) return null;
+  const exact = matches.find((f) => f.name.toLowerCase() === `${gid}_events.json`);
+  return exact ?? matches[0];
+}
+
+/** Prefer already-converted Replay mp4, else largest Highlights match (full-match webm). */
+function pickBestVideo(
+  highlights: FsEntry[],
+  replayVideos: FsEntry[],
+  gameId: string,
+): { path: string; label: string; source: "replay" | "highlights" } | null {
+  const gid = gameId.trim();
+  if (!gid) return null;
+  const replayMatches = replayVideos.filter((f) => matchesGameId(f.name, gid));
+  if (replayMatches.length) {
+    const best = [...replayMatches].sort(
+      (a, b) => (b.size_bytes ?? 0) - (a.size_bytes ?? 0) || b.name.localeCompare(a.name),
+    )[0];
+    return { path: best.path, label: best.name, source: "replay" };
+  }
+  const hlMatches = highlights.filter((f) => matchesGameId(f.name, gid));
+  if (!hlMatches.length) return null;
+  const best = [...hlMatches].sort(
+    (a, b) => (b.size_bytes ?? 0) - (a.size_bytes ?? 0) || b.name.localeCompare(a.name),
+  )[0];
+  return { path: best.path, label: best.name, source: "highlights" };
 }
 
 export function AutoSplitPage() {
@@ -41,9 +74,11 @@ export function AutoSplitPage() {
   const [replaysDir, setReplaysDir] = useState("");
   const [highlightsDir, setHighlightsDir] = useState("");
   const [highlights, setHighlights] = useState<FsEntry[]>([]);
+  const [replayVideos, setReplayVideos] = useState<FsEntry[]>([]);
   const [eventsDir, setEventsDir] = useState("");
   const [eventFiles, setEventFiles] = useState<FsEntry[]>([]);
   const [videoPath, setVideoPath] = useState("");
+  const [videoSource, setVideoSource] = useState<"replay" | "highlights" | "">("");
   const [eventsPath, setEventsPath] = useState("");
   const [padding, setPadding] = useState(10);
   const [mergeGap, setMergeGap] = useState(25);
@@ -55,32 +90,52 @@ export function AutoSplitPage() {
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [prefsSavedNote, setPrefsSavedNote] = useState<string | null>(null);
   const rememberTimer = useRef<number | null>(null);
-  const folderStateRef = useRef({ outputRoot: "", highlightsDir: "" });
+  const folderStateRef = useRef({ outputRoot: "" });
 
-  async function listEvents(dir: string, preferredGameId?: string) {
+  function applyResolvedPaths(
+    gid: string,
+    events: FsEntry[],
+    hl: FsEntry[],
+    replayVids: FsEntry[],
+  ) {
+    const event = pickBestEvent(events, gid);
+    setEventsPath(event?.path ?? "");
+    const video = pickBestVideo(hl, replayVids, gid);
+    setVideoPath(video?.path ?? "");
+    setVideoSource(video?.source ?? "");
+  }
+
+  async function listEvents(dir: string): Promise<FsEntry[]> {
     try {
       const listed = await listDir(dir, [".json"]);
       setEventsDir(listed.directory);
       const files = listed.entries.filter((e) => !e.is_dir);
       setEventFiles(files);
-      const gid = (preferredGameId ?? gameId).trim();
-      if (gid) {
-        const match = files.find((f) => eventMatchesGameId(f.name, gid));
-        if (match) setEventsPath(match.path);
-      }
-      return listed.directory;
+      return files;
     } catch {
       setEventsDir(dir);
       setEventFiles([]);
-      return dir;
+      return [];
     }
   }
 
-  async function loadHighlights(directory?: string | null) {
+  async function listReplayVideos(dir: string): Promise<FsEntry[]> {
+    try {
+      const listed = await listDir(dir, [".mp4", ".mkv", ".mov", ".avi", ".webm"]);
+      const files = listed.entries.filter((e) => !e.is_dir);
+      setReplayVideos(files);
+      return files;
+    } catch {
+      setReplayVideos([]);
+      return [];
+    }
+  }
+
+  async function loadHighlights(directory?: string | null): Promise<FsEntry[]> {
     const listed = await listLocalHighlights(directory ?? null);
     setHighlightsDir(listed.directory);
     setHighlights(listed.entries);
-    return listed.directory;
+    return listed.entries;
   }
 
   async function loadReplays(directory?: string | null) {
@@ -90,17 +145,45 @@ export function AutoSplitPage() {
     return listed;
   }
 
+  async function rememberPrefs(partial: Partial<UiPreferences>) {
+    const saved = await patchUiPreferences(partial);
+    setPrefs(saved);
+    return saved;
+  }
+
+  async function refreshMatchedFiles(gid: string, root?: string) {
+    const base = (root ?? outputRoot).trim();
+    const eventDir = base ? joinOsPath(base, "Event") : eventsDir;
+    const replayDir = base ? joinOsPath(base, "Replay") : "";
+    const [events, hl, replayVids] = await Promise.all([
+      eventDir ? listEvents(eventDir) : Promise.resolve(eventFiles),
+      loadHighlights(highlightsDir || null),
+      replayDir ? listReplayVideos(replayDir) : Promise.resolve(replayVideos),
+    ]);
+    if (gid.trim()) applyResolvedPaths(gid, events, hl, replayVids);
+    return {
+      event: pickBestEvent(events, gid),
+      video: pickBestVideo(hl, replayVids, gid),
+    };
+  }
+
   async function applyOutputRoot(root: string, opts?: { persist?: boolean; gameId?: string }) {
     const persist = opts?.persist !== false;
     const trimmed = root.trim();
     if (!trimmed) return;
-    const eventDir = joinOsPath(trimmed, "Event");
     setOutputRoot(trimmed);
-    const resolvedEvents = await listEvents(eventDir, opts?.gameId);
+    const eventDir = joinOsPath(trimmed, "Event");
+    const replayDir = joinOsPath(trimmed, "Replay");
+    const [events, replayVids] = await Promise.all([
+      listEvents(eventDir),
+      listReplayVideos(replayDir),
+    ]);
+    const gid = (opts?.gameId ?? gameId).trim();
+    if (gid) applyResolvedPaths(gid, events, highlights, replayVids);
     if (persist) {
       await rememberPrefs({
         last_output_root: trimmed,
-        last_events_dir: resolvedEvents,
+        last_events_dir: eventDir,
       });
       setPrefsSavedNote("出力を保存しました");
     }
@@ -109,6 +192,7 @@ export function AutoSplitPage() {
   async function selectRofl(path: string, matchId?: string | null) {
     setRoflPath(path);
     setError(null);
+    setResult(null);
     let gid = matchId?.trim() || "";
     try {
       const overview = await inspectRofl(path);
@@ -116,58 +200,57 @@ export function AutoSplitPage() {
     } catch {
       // filename match_id from list is enough as fallback
     }
-    if (gid) {
-      setGameId(gid);
-      await rememberPrefs({
-        fixed_target_rofl: path,
-        last_game_id: gid,
-      });
-      if (eventsDir) await listEvents(eventsDir, gid);
-    } else {
+    if (!gid) {
       await rememberPrefs({ fixed_target_rofl: path });
+      setError("この ROFL からゲーム ID を取得できませんでした");
+      return;
     }
+    setGameId(gid);
+    await rememberPrefs({
+      fixed_target_rofl: path,
+      last_game_id: gid,
+    });
+    await refreshMatchedFiles(gid);
   }
 
   useEffect(() => {
     getUiPreferences()
       .then(async (p) => {
         setPrefs(p);
-        if (p.last_game_id) setGameId(p.last_game_id);
+        const gid = p.last_game_id || "";
+        if (gid) setGameId(gid);
         if (p.fixed_target_rofl) setRoflPath(p.fixed_target_rofl);
         if (p.last_output_root) {
-          await applyOutputRoot(p.last_output_root, {
-            persist: false,
-            gameId: p.last_game_id || undefined,
-          });
+          await applyOutputRoot(p.last_output_root, { persist: false, gameId: gid });
         } else if (p.last_events_dir) {
-          await listEvents(p.last_events_dir, p.last_game_id || undefined);
+          await listEvents(p.last_events_dir);
         }
         const replayList = await loadReplays(p.last_replays_dir ?? null);
         if (p.fixed_target_rofl) {
           const found = replayList.items.find((i) => i.path === p.fixed_target_rofl);
-          if (found?.match_id && !p.last_game_id) setGameId(found.match_id);
+          if (found?.match_id && !gid) setGameId(found.match_id);
         }
-        await loadHighlights(p.last_highlights_dir ?? null);
+        const hl = await loadHighlights(p.last_highlights_dir ?? null);
+        const resolvedGid = gid || p.last_game_id || "";
+        if (resolvedGid) {
+          const events = p.last_output_root
+            ? await listEvents(joinOsPath(p.last_output_root, "Event"))
+            : eventFiles;
+          const replayVids = p.last_output_root
+            ? await listReplayVideos(joinOsPath(p.last_output_root, "Replay"))
+            : [];
+          applyResolvedPaths(resolvedGid, events, hl, replayVids);
+        }
       })
       .catch((err) => setError(String(err)));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
 
-  async function rememberPrefs(partial: Partial<UiPreferences>) {
-    const saved = await patchUiPreferences(partial);
-    setPrefs(saved);
-    return saved;
-  }
-
-  folderStateRef.current = { outputRoot, highlightsDir };
+  folderStateRef.current = { outputRoot };
 
   async function rememberFoldersFromInputs() {
-    const snap = folderStateRef.current;
-    const root = snap.outputRoot.trim();
-    if (root) {
-      await applyOutputRoot(root, { persist: true, gameId });
-      return;
-    }
+    const root = folderStateRef.current.outputRoot.trim();
+    if (root) await applyOutputRoot(root, { persist: true, gameId });
   }
 
   function scheduleRememberFolders() {
@@ -215,9 +298,12 @@ export function AutoSplitPage() {
         initial: highlightsDir || null,
       });
       if (picked.cancelled || !picked.path) return;
-      const resolved = await loadHighlights(picked.path);
-      await rememberPrefs({ last_highlights_dir: resolved });
+      const hl = await loadHighlights(picked.path);
+      await rememberPrefs({ last_highlights_dir: picked.path });
       setPrefsSavedNote("Highlights フォルダを保存しました");
+      if (gameId.trim()) {
+        applyResolvedPaths(gameId, eventFiles, hl, replayVideos);
+      }
     } catch (err) {
       setError(String(err));
     }
@@ -249,7 +335,7 @@ export function AutoSplitPage() {
         return;
       }
       if (!gid) {
-        setError("先に ROFL を選んでゲーム ID を取得してください");
+        setError("先に ROFL を選んでください");
         return;
       }
 
@@ -270,12 +356,12 @@ export function AutoSplitPage() {
       );
       setEventsPath(response.path);
       setEventsDir(response.game_dir);
-      await listEvents(response.game_dir, response.game_id);
       await rememberPrefs({
         last_events_dir: response.game_dir,
         last_output_root: root,
         last_game_id: response.game_id,
       });
+      await refreshMatchedFiles(response.game_id, root);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -284,36 +370,43 @@ export function AutoSplitPage() {
   }
 
   async function run(dryRun: boolean) {
-    if (!videoPath) {
-      setError("Highlights から webm（または動画）を選択してください");
-      return;
-    }
-    if (!eventsPath) {
-      setError("イベント JSON を選択してください（試合を走査して保存）");
-      return;
-    }
-    if (!gameId.trim()) {
-      setError("先に ROFL を選んでゲーム ID を取得してください");
+    const gid = gameId.trim();
+    if (!gid) {
+      setError("先に ROFL を選んでください");
       return;
     }
     if (!outputRoot.trim()) {
       setError("出力ベースを選んでください");
       return;
     }
+
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      await applyOutputRoot(outputRoot.trim(), { persist: true, gameId });
+      const matched = await refreshMatchedFiles(gid);
+      const resolvedEventsPath = matched.event?.path || "";
+      const resolvedVideoPath = matched.video?.path || "";
+
+      if (!resolvedVideoPath) {
+        setError(`ゲーム ID ${gid} に合う Highlights / Replay 動画が見つかりません`);
+        return;
+      }
+      if (!resolvedEventsPath) {
+        setError(`ゲーム ID ${gid} のイベント JSON がありません（試合を走査して保存）`);
+        return;
+      }
+
+      await applyOutputRoot(outputRoot.trim(), { persist: true, gameId: gid });
       await rememberPrefs({
         last_highlights_dir: highlightsDir || null,
-        last_game_id: gameId.trim(),
+        last_game_id: gid,
         fixed_target_rofl: roflPath || null,
       });
       const response = await autoSplitClips({
-        source_video_path: videoPath,
-        events_path: eventsPath,
-        original_match_id: gameId.trim(),
+        source_video_path: resolvedVideoPath,
+        events_path: resolvedEventsPath,
+        original_match_id: gid,
         padding_before_sec: padding,
         padding_after_sec: padding,
         merge_gap_sec: mergeGap,
@@ -325,6 +418,7 @@ export function AutoSplitPage() {
         setGameId(response.game_id);
         await rememberPrefs({ last_game_id: response.game_id });
       }
+      await refreshMatchedFiles(response.game_id || gid);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -342,12 +436,9 @@ export function AutoSplitPage() {
 
   const gid = gameId.trim() || "…";
   const base = outputRoot.replace(/[/\\]+$/, "") || "…";
-  const visibleEvents = gameId.trim()
-    ? eventFiles.filter((f) => eventMatchesGameId(f.name, gameId))
-    : eventFiles;
-  const visibleHighlights = gameId.trim()
-    ? highlights.filter((f) => eventMatchesGameId(f.name, gameId))
-    : highlights;
+  const hlMatchCount = gameId.trim()
+    ? highlights.filter((f) => matchesGameId(f.name, gameId)).length
+    : 0;
 
   return (
     <section className="panel">
@@ -375,17 +466,15 @@ export function AutoSplitPage() {
         <p className="path-preview mono">
           {base}\Event · Replay · stats · Clip\{gid}
         </p>
-        <p className="path-preview mono">
-          Event/{gid}_events.json · stats/{gid}_stats_*.json
-        </p>
         {prefs?.settings_path ? (
-          <p className="path-preview mono">設定ファイル · {prefs.settings_path}</p>
+          <p className="path-preview mono">設定 · {prefs.settings_path}</p>
         ) : null}
         {prefsSavedNote ? <p className="success">{prefsSavedNote}</p> : null}
       </div>
 
       <div className="result-box">
         <h3>リプレイ（ROFL）</h3>
+        <p className="hint">ROFL を選ぶとゲーム ID から Event / 動画を自動で確定します</p>
         <p className="path-preview mono">{roflPath || replaysDir || "—"}</p>
         <p className="status-line mono">ゲーム ID · {gid}</p>
         <div className="row" style={{ marginBottom: 8 }}>
@@ -414,8 +503,49 @@ export function AutoSplitPage() {
         </div>
       </div>
 
+      <div className="result-box overview-card">
+        <h3>自動マッチ</h3>
+        <dl>
+          <div>
+            <dt>Event</dt>
+            <dd className="mono">
+              {eventsPath
+                ? eventsPath
+                : gameId.trim()
+                  ? "未作成（下で走査して保存）"
+                  : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt>動画</dt>
+            <dd className="mono">
+              {videoPath
+                ? `${videoPath}${videoSource === "replay" ? " · Replay" : " · Highlights"}`
+                : gameId.trim()
+                  ? "該当ファイルなし"
+                  : "—"}
+            </dd>
+          </div>
+        </dl>
+        {hlMatchCount > 1 ? (
+          <p className="hint">Highlights 候補 {hlMatchCount} 件 → サイズ最大を採用</p>
+        ) : null}
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="btn ghost" disabled={busy} onClick={() => browseHighlights()}>
+            Highlights フォルダ…
+          </button>
+          <button
+            className="btn ghost"
+            disabled={busy || !gameId.trim()}
+            onClick={() => refreshMatchedFiles(gameId).catch((e) => setError(String(e)))}
+          >
+            再マッチ
+          </button>
+        </div>
+      </div>
+
       <div className="result-box">
-        <h3>イベント</h3>
+        <h3>イベント取得</h3>
         <p className="status-line mono">{liveLabel}</p>
         {live?.warning ? <p className="error">{live.warning}</p> : null}
         <div className="row">
@@ -427,45 +557,6 @@ export function AutoSplitPage() {
           </button>
         </div>
         {exportNote ? <p className="success">{exportNote}</p> : null}
-      </div>
-
-      <div className="split-2">
-        <div className="stack">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h3>Highlights（webm）</h3>
-            <button className="btn ghost" disabled={busy} onClick={() => browseHighlights()}>
-              参照…
-            </button>
-          </div>
-          <p className="path-preview mono">{highlightsDir || "—"}</p>
-          <p className="hint">選択した webm は実行時に {base}\Replay へ mp4 変換します</p>
-          <div className="file-list">
-            {visibleHighlights.map((v) => (
-              <button
-                key={v.path}
-                className={`file-item ${videoPath === v.path ? "active" : ""}`}
-                onClick={() => setVideoPath(v.path)}
-              >
-                {v.name}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="stack">
-          <h3>イベント JSON（Event）</h3>
-          <p className="path-preview mono">{eventsDir || "—"}</p>
-          <div className="file-list">
-            {visibleEvents.map((v) => (
-              <button
-                key={v.path}
-                className={`file-item ${eventsPath === v.path ? "active" : ""}`}
-                onClick={() => setEventsPath(v.path)}
-              >
-                {v.name}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       <div className="row actions">
