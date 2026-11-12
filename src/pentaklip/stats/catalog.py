@@ -133,15 +133,16 @@ TABLE_STAT_KEYS: tuple[StatKey, ...] = (
 
 # Live Client cannot provide GPM / GD15 / XPD15 / DPM / DMG%.
 # Default radar axes approximate the LCK octagon with available proxies.
+# Towers / OBJ are omitted — noisy for lane radar; use CS@15 + Vision Score instead.
 LCK_RADAR_STAT_KEYS: tuple[StatKey, ...] = (
     StatKey.CS_PER_MIN,  # CSM
     StatKey.KDA_RATIO,
     StatKey.KILL_PARTICIPATION,  # ~DMG%
     StatKey.CSD15,
     StatKey.LVLD15,  # ~XPD15
-    StatKey.VISION_PER_MIN,  # fills GPM/DPM gap
-    StatKey.OBJECTIVE_SCORE,
-    StatKey.TOWER_KILLS,
+    StatKey.VISION_PER_MIN,  # ~GPM/DPM gap filler
+    StatKey.CS_AT_15,  # early-lane absolute (pairs with CSD15)
+    StatKey.WARD_SCORE,  # absolute vision (pairs with VSPM)
 )
 
 # Signed diffs: radar maps [-peak, +peak] → [0, 1] with 0 at center.

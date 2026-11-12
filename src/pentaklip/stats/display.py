@@ -36,9 +36,7 @@ def default_display_settings() -> DisplaySettings:
         StatKey.DEATHS,
         StatKey.ASSISTS,
         StatKey.CREEP_SCORE,
-        StatKey.CS_AT_15,
         StatKey.LEVEL_AT_15,
-        StatKey.WARD_SCORE,
         StatKey.LEVEL,
     ]
     jg_table = [
@@ -47,13 +45,10 @@ def default_display_settings() -> DisplaySettings:
         StatKey.DEATHS,
         StatKey.ASSISTS,
         StatKey.CREEP_SCORE,
-        StatKey.CS_AT_15,
         StatKey.LEVEL_AT_15,
-        StatKey.WARD_SCORE,
         StatKey.DRAGON_KILLS,
         StatKey.BARON_KILLS,
         StatKey.HERALD_KILLS,
-        StatKey.INHIBITOR_KILLS,
         StatKey.GOLD,
         StatKey.LEVEL,
     ]
@@ -62,7 +57,6 @@ def default_display_settings() -> DisplaySettings:
         StatKey.KILLS,
         StatKey.DEATHS,
         StatKey.ASSISTS,
-        StatKey.WARD_SCORE,
         StatKey.LEVEL,
     ]
     shared_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES, StatKey.LEVEL_SERIES]
