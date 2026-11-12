@@ -30,16 +30,24 @@ function matchesGameId(name: string, gameId: string): boolean {
   const gid = gameId.trim().toLowerCase();
   if (!gid) return false;
   const lower = name.toLowerCase();
-  return lower.startsWith(`${gid}_`) || lower.includes(gid.toLowerCase());
+  if (lower.startsWith(`${gid}_`) || lower.includes(gid)) return true;
+  // ROFL id may be JP1-123 while filename uses bare digits (or the reverse).
+  const digits = gid.includes("-") ? gid.slice(gid.lastIndexOf("-") + 1) : gid;
+  return Boolean(digits && digits.length >= 6 && lower.includes(digits));
 }
 
 function pickBestEvent(files: FsEntry[], gameId: string): FsEntry | null {
   const gid = gameId.trim().toLowerCase();
   if (!gid) return null;
   const matches = files.filter((f) => matchesGameId(f.name, gid));
-  if (!matches.length) return null;
-  const exact = matches.find((f) => f.name.toLowerCase() === `${gid}_events.json`);
-  return exact ?? matches[0];
+  if (matches.length) {
+    const exact = matches.find((f) => f.name.toLowerCase() === `${gid}_events.json`);
+    if (exact) return exact;
+    const eventsNamed = matches.find((f) => /_events\.json$/i.test(f.name));
+    return eventsNamed ?? matches[0];
+  }
+  // Legacy / single-file export without a game-id prefix.
+  return files.find((f) => f.name.toLowerCase() === "events.json") ?? null;
 }
 
 /** Prefer already-converted Replay mp4, else largest Highlights match (full-match webm). */
@@ -100,6 +108,9 @@ export function AutoSplitPage() {
   ) {
     const event = pickBestEvent(events, gid);
     setEventsPath(event?.path ?? "");
+    if (event) {
+      setExportNote(`Event ファイルを使用 · ${event.name}`);
+    }
     const video = pickBestVideo(hl, replayVids, gid);
     setVideoPath(video?.path ?? "");
     setVideoSource(video?.source ?? "");
@@ -418,13 +429,24 @@ export function AutoSplitPage() {
     }
   }
 
+  const eventFileName = eventsPath
+    ? eventsPath.split(/[/\\]/).pop() || eventsPath
+    : "";
+  // Prefer on-disk Event file status; Live Client is only for harvest.
+  const eventStatusLabel = eventsPath
+    ? `保存済み · ${eventFileName}`
+    : gameId.trim()
+      ? "ファイルなし（走査して保存）"
+      : "ROFL 未選択";
   const liveLabel = live?.available
-    ? `接続中 · ${live.event_count} 件` +
+    ? `Live · 接続中 · ${live.event_count} 件` +
       (live.game_id ? ` · ${live.game_id}` : "") +
       (live.game_time_sec != null ? ` · ${live.game_time_sec.toFixed(0)}s` : "")
     : live?.error
-      ? `未接続 · ${live.error}`
-      : "未取得";
+      ? `Live · 未接続 · ${live.error}`
+      : eventsPath
+        ? "Live · 未照会（ファイルは利用可）"
+        : "Live · 未照会";
 
   const gid = gameId.trim() || "…";
   const base = outputRoot.replace(/[/\\]+$/, "") || "…";
@@ -538,11 +560,12 @@ export function AutoSplitPage() {
 
       <div className="result-box">
         <h3>イベント取得</h3>
-        <p className="status-line mono">{liveLabel}</p>
+        <p className={`status-line mono ${eventsPath ? "success" : ""}`}>{eventStatusLabel}</p>
+        <p className="path-preview mono">{liveLabel}</p>
         {live?.warning ? <p className="error">{live.warning}</p> : null}
         <div className="row">
           <button className="btn primary" disabled={busy} onClick={() => refreshLive()}>
-            {busy ? "走査中…" : "試合を走査して保存"}
+            {busy ? "走査中…" : eventsPath ? "再走査して上書き保存" : "試合を走査して保存"}
           </button>
         </div>
         {exportNote ? <p className="success">{exportNote}</p> : null}
