@@ -157,6 +157,7 @@ class UiPreferencesModel(BaseModel):
     last_source_dir: str | None = None
     last_replays_dir: str | None = None
     last_video_dir: str | None = None
+    last_highlights_dir: str | None = None
     last_events_dir: str | None = None
     last_output_root: str | None = None
     last_game_id: str | None = None

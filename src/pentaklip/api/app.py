@@ -212,6 +212,31 @@ def api_list_local_replays(directory: str | None = None) -> LocalReplaysResponse
     )
 
 
+@app.get("/api/highlights/local")
+def api_list_local_highlights(directory: str | None = None) -> dict:
+    """List LoL Highlights folder videos (.webm / common containers)."""
+    prefs = load_ui_preferences(settings.data_dir)
+    default_directory = settings.lol_highlights_dir.expanduser().resolve()
+    chosen = directory or prefs.last_highlights_dir or str(default_directory)
+    highlights_dir = Path(chosen).expanduser()
+    try:
+        resolved = highlights_dir.resolve()
+    except OSError:
+        resolved = default_directory
+    if not resolved.is_dir():
+        resolved = default_directory
+    suffixes = [".webm", ".mp4", ".mkv", ".mov", ".avi"]
+    try:
+        entries = list_directory(resolved, suffixes=suffixes)
+    except FileNotFoundError:
+        entries = []
+    return {
+        "directory": str(resolved),
+        "default_directory": str(default_directory),
+        "entries": [e.model_dump() for e in entries if not e.is_dir],
+    }
+
+
 @app.get("/api/replays/parse-id", response_model=ParseMatchIdResponse)
 def api_parse_match_id(path: str) -> ParseMatchIdResponse:
     p = Path(path)
