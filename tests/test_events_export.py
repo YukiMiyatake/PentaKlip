@@ -83,13 +83,14 @@ def test_build_and_export_events_json(tmp_path: Path) -> None:
         game_time_sec=310.0,
     )
     path = Path(result.path)
-    assert path == (tmp_path / "JP1-123456" / "JP1-123456_events.json").resolve()
+    assert path == (tmp_path / "Event" / "JP1-123456_events.json").resolve()
     assert path.is_file()
     loaded = json.loads(path.read_text(encoding="utf-8"))
     assert loaded["Events"][1]["EventName"] == "ChampionKill"
     assert loaded["meta"]["game_id"] == "JP1-123456"
     assert result.event_count == 3
     assert result.game_id == "JP1-123456"
+    assert result.game_dir == str((tmp_path / "Event").resolve())
 
 
 def test_fetch_live_events_unavailable() -> None:
@@ -122,6 +123,8 @@ def test_export_events_with_stats(tmp_path: Path) -> None:
     assert result.stats_aggregated_path is not None
     assert Path(result.stats_bundle_path).is_file()
     assert Path(result.stats_aggregated_path).is_file()
+    assert Path(result.stats_bundle_path).parent.name == "stats"
+    assert Path(result.stats_bundle_path).name.startswith("JP1-STATS_")
     assert result.player_count == 1
     bundle = json.loads(Path(result.stats_bundle_path).read_text(encoding="utf-8"))
     assert bundle["meta"]["capture_mode"] == "events_export_oneshot"
@@ -157,7 +160,9 @@ def test_api_export_with_provided_events(tmp_path: Path, monkeypatch: pytest.Mon
     body = response.json()
     assert body["event_count"] == 3
     assert body["game_id"] == "KR-999"
-    assert Path(body["path"]) == (tmp_path / "matches" / "KR-999" / "KR-999_events.json").resolve()
+    assert Path(body["path"]) == (
+        tmp_path / "matches" / "Event" / "KR-999_events.json"
+    ).resolve()
     assert Path(body["path"]).is_file()
 
 

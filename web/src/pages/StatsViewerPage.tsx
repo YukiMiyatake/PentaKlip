@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneCompareChart } from "../components/LaneCompareChart";
+import { RadarStatChart } from "../components/RadarStatChart";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
 import type { AggregatedReplayStats, ChartBundle } from "../types";
@@ -15,8 +16,13 @@ export function StatsViewerPage() {
   useEffect(() => {
     getUiPreferences()
       .then((p) => {
-        if (p.last_events_dir) setDirectory(p.last_events_dir);
-        else if (p.last_output_root) setDirectory(p.last_output_root);
+        if (p.last_output_root) {
+          const base = p.last_output_root.replace(/[/\\]+$/, "");
+          const sep = p.last_output_root.includes("/") && !p.last_output_root.includes("\\") ? "/" : "\\";
+          setDirectory(`${base}${sep}stats`);
+        } else if (p.last_events_dir) {
+          setDirectory(p.last_events_dir);
+        }
       })
       .catch(() => {
         /* optional */
@@ -87,43 +93,56 @@ export function StatsViewerPage() {
 
   const compares =
     bundle?.charts.filter((c) => c.chart_type === "lane_compare") ?? [];
+  const radars = bundle?.charts.filter((c) => c.chart_type === "radar") ?? [];
   const tables = bundle?.charts.filter((c) => c.chart_type === "table") ?? [];
   const lines = bundle?.charts.filter((c) => c.chart_type === "line") ?? [];
 
+  const obsUrl = (() => {
+    const u = new URL("/obs", window.location.origin);
+    if (directory.trim()) u.searchParams.set("dir", directory.trim());
+    u.searchParams.set("refresh", "30");
+    return u.toString();
+  })();
+
   return (
     <section className="panel">
-      <h2>スタッツ表示</h2>
-      <p className="hint">
-        同じフォルダ内の <span className="mono">*_stats_aggregated.json</span>（なければ bundle）をすべて読み、
-        レーン登録名であいまい一致したうえで複数試合の平均を出します。レーンごとに LCK 風のプレイヤー比較グラフを表示します。
-      </p>
+      <h2>スタッツ</h2>
 
-      <div className="result-box" style={{ marginBottom: 16 }}>
-        <h3>フォルダから平均集計</h3>
+      <div className="result-box">
         <div className="row">
           <input
             className="text-input grow"
-            placeholder="例: D:\\PentaKlip\\matches\\scrim-0412"
+            placeholder="stats フォルダ"
             value={directory}
             onChange={(e) => setDirectory(e.target.value)}
           />
           <button className="btn primary" disabled={busy} onClick={() => onFolderAggregate()}>
-            {busy ? "集計中…" : "フォルダを集計"}
+            {busy ? "集計中…" : "集計"}
           </button>
         </div>
-      </div>
-
-      <div className="row file-input">
-        <input
-          type="file"
-          accept=".json,application/json"
-          disabled={busy}
-          onChange={(event) => onFile(event.target.files?.[0] ?? null)}
-        />
-        {busy ? <span>処理中…</span> : null}
+        <div className="row actions">
+          <input
+            type="file"
+            accept=".json,application/json"
+            disabled={busy}
+            onChange={(event) => onFile(event.target.files?.[0] ?? null)}
+          />
+          <a className="btn ghost" href={obsUrl} target="_blank" rel="noreferrer">
+            OBS
+          </a>
+        </div>
       </div>
       {meta ? <p className="success">{meta}</p> : null}
       {error ? <p className="error">{error}</p> : null}
+
+      {radars.length > 0 ? (
+        <div className="radar-grid" style={{ marginTop: 20 }}>
+          <h3 className="section-title">レーダー</h3>
+          {radars.map((chart) => (
+            <RadarStatChart key={chart.chart_id} chart={chart} />
+          ))}
+        </div>
+      ) : null}
 
       {compares.length > 0 ? (
         <div className="lane-compare-grid" style={{ marginTop: 20 }}>

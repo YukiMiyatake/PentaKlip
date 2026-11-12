@@ -1,14 +1,33 @@
 ---
-description: タスクごとに feature ブランチを切り main へ PR する運用
+description: タスクごとに feature ブランチを切り、タイプラベル付き PR で自動マージする運用
 alwaysApply: true
 ---
 
-# PR per task
+# PR per task + auto-merge
 
 - 1 タスク = 1 feature ブランチ = 1 PR（main 向け）
-- `main` へ直接 commit / push しない
+- `main` へ直接 commit / push / マージしない
 - ブランチ名は `feature/<短い内容>`（例: `feature/replay-install-api`）
-- タスク完了時は必ず PR を作成し、URL を共有する
-- 無関係な変更を同じ PR に混ぜない。別タスクなら別ブランチ・別 PR
-- CI（GitHub Actions）が通ってからマージする前提で進める
-- ユーザーが明示しない限り `push --force` や main への直接マージ操作はしない（通常は PR マージ）
+- 無関係な変更を同じ PR に混ぜない
+
+## PR 作成（必須）
+
+タスク完了時は必ず PR を作り URL を共有する。作成時に **タイプラベルを必ず付ける**:
+
+```bash
+gh pr create --label feature --title "..." --body "..."
+# または作成後: gh pr edit <N> --add-label feature
+```
+
+許可ラベル（いずれか 1 つ必須）: `feature` / `fix` / `chore` / `docs` / `ci`
+
+ラベルなし PR はゲート失敗し、**自動マージされない**。
+
+## 自動マージ（既定）
+
+- タイプラベル付き + draft でない + CI 緑 → GitHub Actions が **squash auto-merge** する
+- エージェントは通常 **手動マージしない**（ユーザー指示がある場合のみ）
+- `push --force` はユーザー明示時のみ
+- PR が `BEHIND` のときは `main` を取り込んで push し、auto-merge が通るようにする
+
+詳細: [`.github/LABELS.md`](../../.github/LABELS.md)

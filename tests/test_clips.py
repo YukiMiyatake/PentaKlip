@@ -90,7 +90,7 @@ def test_create_clips_dry_run_and_mocked_ffmpeg(tmp_path: Path) -> None:
         match_id="JP1-1",
     )
     assert len(dry.clips) == 1
-    assert dry.clips[0].output_path.name.startswith("JP1-1_01_solo_")
+    assert dry.clips[0].output_path.name == "JP1-1_01_solo_0m10s-0m30s.mp4"
 
     with patch(
         "pentaklip.clips.service.cut_clip",
@@ -140,18 +140,23 @@ def test_clips_api_dry_run(tmp_path: Path) -> None:
     assert body["clips"][0]["start_sec"] == 5
 
 
-def test_auto_split_uses_game_id_folder(tmp_path: Path) -> None:
+def test_auto_split_uses_clip_game_id_folder(tmp_path: Path) -> None:
     video = tmp_path / "rec_JP1-777.mp4"
     video.write_bytes(b"video")
     events = {
         "Events": [{"EventName": "ChampionKill", "EventTime": 30.0}],
         "meta": {"game_id": "JP1-777"},
     }
-    events_path = tmp_path / "matches" / "JP1-777" / "events.json"
+    events_path = tmp_path / "Event" / "JP1-777_events.json"
     events_path.parent.mkdir(parents=True)
     events_path.write_text(json.dumps(events), encoding="utf-8")
+    out_root = tmp_path / "out"
 
     client = TestClient(app)
+    prefs = client.get("/api/ui/preferences").json()
+    prefs["last_output_root"] = str(out_root)
+    assert client.put("/api/ui/preferences", json=prefs).status_code == 200
+
     response = client.post(
         "/api/clips/auto-split",
         json={
@@ -165,8 +170,9 @@ def test_auto_split_uses_game_id_folder(tmp_path: Path) -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["game_id"] == "JP1-777"
-    assert Path(body["output_dir"]) == events_path.parent.resolve()
+    assert Path(body["output_dir"]) == (out_root / "Clip" / "JP1-777").resolve()
     assert body["clip_count"] == 1
+    assert "0m25s-0m35s" in Path(body["clips"][0]["output_path"]).name
 
 
 def test_install_api_supports_mode(tmp_path: Path) -> None:

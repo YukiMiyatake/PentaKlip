@@ -94,8 +94,16 @@ export function putUiPreferences(prefs: UiPreferences): Promise<UiPreferences> {
   });
 }
 
-export function listLocalReplays(): Promise<LocalReplayItem[]> {
-  return request("/api/replays/local");
+export function listLocalReplays(directory?: string | null): Promise<{
+  directory: string;
+  default_directory: string;
+  items: LocalReplayItem[];
+}> {
+  const q =
+    directory && directory.trim()
+      ? `?directory=${encodeURIComponent(directory.trim())}`
+      : "";
+  return request(`/api/replays/local${q}`);
 }
 
 export function inspectRofl(path: string): Promise<RoflOverview> {
@@ -106,6 +114,7 @@ export function installReplay(body: {
   source_path: string;
   local_replay_id: string;
   mode?: "copy" | "move" | "rename_in_place";
+  replays_dir?: string | null;
   dry_run?: boolean;
 }): Promise<{
   original_match_id: string;
@@ -147,14 +156,42 @@ export function getFfmpegStatus(): Promise<FfmpegStatus> {
   return request("/api/tools/ffmpeg");
 }
 
-export function installFfmpeg(): Promise<{
+export function installFfmpeg(body?: {
+  destination?: string | null;
+}): Promise<{
   ok?: boolean;
   returncode: number;
   stdout: string;
   stderr: string;
   status: FfmpegStatus;
+  ffmpeg_path?: string | null;
+  destination?: string | null;
 }> {
-  return request("/api/tools/ffmpeg/install", { method: "POST" });
+  return request("/api/tools/ffmpeg/install", {
+    method: "POST",
+    body: JSON.stringify({ destination: body?.destination ?? null }),
+  });
+}
+
+export function moveFfmpeg(body: {
+  destination: string;
+  source_exe?: string | null;
+}): Promise<{
+  ok?: boolean;
+  moved?: boolean;
+  source_root?: string;
+  destination?: string;
+  ffmpeg_path?: string | null;
+  status: FfmpegStatus;
+  message?: string;
+}> {
+  return request("/api/tools/ffmpeg/move", {
+    method: "POST",
+    body: JSON.stringify({
+      destination: body.destination,
+      source_exe: body.source_exe ?? null,
+    }),
+  });
 }
 
 export function addFfmpegToPath(): Promise<FfmpegStatus> {

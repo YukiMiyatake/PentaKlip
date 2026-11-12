@@ -9,7 +9,7 @@ from pathlib import Path
 from pentaklip.detect.models import HighlightCandidate, HighlightKind
 from pentaklip.detect.service import detect_from_events
 from pentaklip.export.ffmpeg import ExportResult, cut_clip, ensure_mp4_source
-from pentaklip.paths import unique_file_path
+from pentaklip.paths import format_clip_time_range, unique_file_path
 
 
 @dataclass(frozen=True)
@@ -129,12 +129,16 @@ def create_clips(
     merge_fights: bool = True,
     dry_run: bool = False,
     match_id: str | None = None,
+    replay_dir: Path | None = None,
 ) -> ClipJobResult:
     """
     Cut one clip file per planned segment from `source_video`.
 
     `source_video` is a full-match recording (or any timeline-aligned video).
     Automated LoL-client capture is out of scope here; feed a recorded file.
+
+    Converted full-match MP4 (from webm) is written to ``replay_dir`` when set,
+    otherwise beside the clips in ``output_dir``.
     """
     original_source = source_video.resolve()
     if not original_source.is_file():
@@ -153,8 +157,10 @@ def create_clips(
         raise ValueError("No clip segments to create (provide events, highlights, or segments)")
 
     output_dir = output_dir.resolve()
+    convert_dir = (replay_dir or output_dir).resolve()
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
+        convert_dir.mkdir(parents=True, exist_ok=True)
 
     converted = False
     if dry_run:
@@ -162,7 +168,7 @@ def create_clips(
     else:
         source_video, convert_result = ensure_mp4_source(
             original_source,
-            cache_dir=output_dir,
+            cache_dir=convert_dir,
             name_prefix=match_id,
         )
         converted = convert_result is not None
@@ -171,7 +177,8 @@ def create_clips(
     created: list[CreatedClip] = []
     for index, seg in enumerate(planned, start=1):
         label = _safe_slug(seg.label or seg.kind, seg.kind)
-        filename = f"{prefix}_{index:02d}_{label}_{int(seg.start_sec)}-{int(seg.end_sec)}.mp4"
+        time_range = format_clip_time_range(seg.start_sec, seg.end_sec)
+        filename = f"{prefix}_{index:02d}_{label}_{time_range}.mp4"
         output_path = unique_file_path(output_dir / filename)
         if dry_run:
             created.append(

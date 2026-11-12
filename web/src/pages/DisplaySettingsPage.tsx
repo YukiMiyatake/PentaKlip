@@ -16,6 +16,26 @@ const POSITION_ORDER: Position[] = [
   "UNKNOWN",
 ];
 
+const FALLBACK_POSITION_LABELS: Record<Position, string> = {
+  TOP: "TOP",
+  JUNGLE: "JUNGLE",
+  MIDDLE: "MIDDLE",
+  BOTTOM: "BOTTOM",
+  UTILITY: "SUPPORT",
+  UNKNOWN: "UNKNOWN",
+};
+
+function positionLabel(
+  position: Position,
+  catalog: Catalog | null,
+): string {
+  return (
+    catalog?.position_labels?.[position] ??
+    FALLBACK_POSITION_LABELS[position] ??
+    position
+  );
+}
+
 export function DisplaySettingsPage() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [settings, setSettings] = useState<DisplaySettings | null>(null);
@@ -131,7 +151,7 @@ export function DisplaySettingsPage() {
   if (!catalog || !settings) {
     return (
       <section className="panel">
-        <h2>スタッツ設定</h2>
+        <h2>表示設定</h2>
         <p className="hint">{error ?? "読み込み中…"}</p>
       </section>
     );
@@ -139,13 +159,8 @@ export function DisplaySettingsPage() {
 
   return (
     <section className="panel">
-      <h2>スタッツ設定</h2>
-      <p className="hint">
-        レーンごとの表示項目と、あいまい一致用のプレイヤー名（Riot ID のゲームネーム側。タグは無視）を登録します。
-        例: <span className="mono">Tanaka</span> → <span className="mono">T1 Tanaka</span> /{" "}
-        <span className="mono">T1 Tanakakun</span>
-      </p>
-      <div className="row" style={{ marginBottom: 16 }}>
+      <h2>表示設定</h2>
+      <div className="row actions">
         <button className="btn primary" disabled={busy} onClick={onSave}>
           保存
         </button>
@@ -160,9 +175,9 @@ export function DisplaySettingsPage() {
         {POSITION_ORDER.filter((p) => catalog.positions.includes(p)).map(
           (position) => (
             <article className="lane-card" key={position}>
-              <h3>{position}</h3>
+              <h3>{positionLabel(position, catalog)}</h3>
               <div className="stat-group" style={{ marginBottom: 12 }}>
-                <h4>プレイヤー名（あいまい一致）</h4>
+                <h4>プレイヤー名</h4>
                 <div className="row" style={{ marginBottom: 8 }}>
                   <input
                     className="text-input grow"

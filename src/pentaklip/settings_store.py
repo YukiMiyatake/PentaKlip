@@ -14,6 +14,7 @@ from pydantic import BaseModel
 class UiPreferences(BaseModel):
     fixed_target_rofl: str | None = None
     last_source_dir: str | None = None
+    last_replays_dir: str | None = None
     last_video_dir: str | None = None
     last_events_dir: str | None = None
     last_output_root: str | None = None

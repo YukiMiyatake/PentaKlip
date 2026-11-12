@@ -13,8 +13,12 @@ export type StatKeyInfo = {
 
 export type Catalog = {
   positions: Position[];
+  /** Display names (e.g. UTILITY → SUPPORT). */
+  position_labels?: Partial<Record<Position, string>>;
   table_stat_keys: StatKeyInfo[];
   series_stat_keys: StatKeyInfo[];
+  /** Live Client proxies for LCK-style radar axes. */
+  lck_radar_stat_keys?: StatKeyInfo[];
   all_stat_keys: StatKeyInfo[];
 };
 
@@ -84,10 +88,18 @@ export type RoflOverview = {
 export type UiPreferences = {
   fixed_target_rofl: string | null;
   last_source_dir: string | null;
+  /** LoL Replays folder used as replace destination (defaults to Documents\\...\\Replays). */
+  last_replays_dir?: string | null;
   last_video_dir: string | null;
   last_events_dir: string | null;
   last_output_root: string | null;
   last_game_id: string | null;
+};
+
+export type LocalReplaysResponse = {
+  directory: string;
+  default_directory: string;
+  items: LocalReplayItem[];
 };
 
 export type FsEntry = {

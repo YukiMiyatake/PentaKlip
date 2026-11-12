@@ -93,3 +93,94 @@ def test_ffmpeg_settings_api(tmp_path: Path, monkeypatch) -> None:
     assert reset.status_code == 200
     assert reset.json()["quality"] == "standard"
     assert reset.json()["encoder"] == "auto"
+
+
+def test_find_and_resolve_ffmpeg_install_root(tmp_path: Path) -> None:
+    from pentaklip.tools.ffmpeg_setup import find_ffmpeg_under, resolve_ffmpeg_install_root
+
+    root = tmp_path / "ffmpeg-release"
+    exe = root / "bin" / "ffmpeg.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"fake")
+    assert find_ffmpeg_under(root) == exe.resolve()
+    assert resolve_ffmpeg_install_root(exe) == root.resolve()
+
+
+def test_move_ffmpeg_install(tmp_path: Path, monkeypatch) -> None:
+    from pentaklip.tools import ffmpeg_setup
+
+    src = tmp_path / "old-ffmpeg"
+    exe = src / "bin" / "ffmpeg.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"fake")
+    dest = tmp_path / "new-home"
+
+    monkeypatch.setattr(ffmpeg_setup, "add_to_user_path", lambda directory: str(directory))
+    monkeypatch.setattr(ffmpeg_setup, "_ffmpeg_version", lambda path: "ffmpeg version test")
+
+    result = ffmpeg_setup.move_ffmpeg_install(dest, source_exe=exe)
+    assert result["ok"] is True
+    assert result["moved"] is True
+    new_exe = Path(result["ffmpeg_path"])
+    assert new_exe.is_file()
+    assert new_exe == (dest / "bin" / "ffmpeg.exe").resolve()
+    assert not src.exists()
+
+
+def test_ffmpeg_move_api(tmp_path: Path, monkeypatch) -> None:
+    from pentaklip import config
+    from pentaklip.tools import ffmpeg_setup
+
+    monkeypatch.setattr(config.settings, "data_dir", tmp_path)
+    src = tmp_path / "pkg"
+    exe = src / "bin" / "ffmpeg.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"fake")
+    dest = tmp_path / "moved"
+
+    monkeypatch.setattr(ffmpeg_setup, "add_to_user_path", lambda directory: str(directory))
+    monkeypatch.setattr(ffmpeg_setup, "_ffmpeg_version", lambda path: "ffmpeg version test")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/tools/ffmpeg/move",
+        json={"destination": str(dest), "source_exe": str(exe)},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["moved"] is True
+    assert Path(body["ffmpeg_path"]).is_file()
+    saved = load_ffmpeg_settings(tmp_path)
+    assert saved.ffmpeg_path == body["ffmpeg_path"]
+
+
+def test_ffmpeg_install_passes_location(monkeypatch, tmp_path: Path) -> None:
+    from pentaklip.tools import ffmpeg_setup
+
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = b"ok"
+        stderr = b""
+
+    def fake_run(cmd: list[str], *, timeout: float | None = None):
+        _ = timeout
+        captured["cmd"] = cmd
+        dest = Path(cmd[cmd.index("--location") + 1])
+        exe = dest / "bin" / "ffmpeg.exe"
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_bytes(b"fake")
+        return FakeProc()
+
+    monkeypatch.setattr(ffmpeg_setup, "_winget_exe", lambda: "winget")
+    monkeypatch.setattr(ffmpeg_setup, "_run", fake_run)
+    monkeypatch.setattr(ffmpeg_setup, "add_to_user_path", lambda directory: str(directory))
+    monkeypatch.setattr(ffmpeg_setup, "_ffmpeg_version", lambda path: "ffmpeg version test")
+
+    dest = tmp_path / "custom"
+    result = ffmpeg_setup.install_ffmpeg_winget(destination=dest)
+    assert result["ok"] is True
+    assert "--location" in captured["cmd"]  # type: ignore[operator]
+    assert Path(result["ffmpeg_path"]).is_file()
+    assert Path(result["ffmpeg_path"]).is_relative_to(dest.resolve())
