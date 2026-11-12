@@ -162,6 +162,21 @@ OCR_RADAR_STAT_KEYS: frozenset[StatKey] = frozenset(
     }
 )
 
+# Need ~15:00 snapshots (or OCR). Missing → omit axis; never fabricate 0 / center.
+SNAPSHOT_RADAR_STAT_KEYS: frozenset[StatKey] = frozenset(
+    {
+        StatKey.CSD15,
+        StatKey.LVLD15,
+        StatKey.CS_AT_15,
+        StatKey.LEVEL_AT_15,
+    }
+)
+
+# Optional radar axes: drop per player (or lane) when scalar is None.
+OPTIONAL_RADAR_STAT_KEYS: frozenset[StatKey] = (
+    OCR_RADAR_STAT_KEYS | SNAPSHOT_RADAR_STAT_KEYS
+)
+
 # Signed diffs: radar maps [-peak, +peak] → [0, 1] with 0 at center.
 SIGNED_RADAR_STAT_KEYS: frozenset[StatKey] = frozenset(
     {

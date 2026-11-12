@@ -216,9 +216,9 @@ export function DisplaySettingsPage() {
       <h2>表示設定</h2>
       <p className="hint">
         レーダー既定軸: CSM / KDA / KP% / CSD15 / LVLD15 / DPM / DMG% / VSPM。
-        DPM・DMG% は OCR が無い試合では自動で軸から外します。CSD15 / LVLD15
-        はデータが無くても軸として残ります。変更は自動保存され、スタッツ / OBS
-        チャートへ即反映されます。
+        DPM・DMG% / CSD15 / LVLD15 は値が無いプレイヤーではレーダー軸から外します
+        （欠損を 0 や中央埋めにしません）。フォルダ集計も値がある試合だけ平均します。
+        変更は自動保存され、スタッツ / OBS チャートへ即反映されます。
       </p>
       <div className="row actions">
         <button className="btn primary" disabled={busy} onClick={() => void onSaveNow()}>

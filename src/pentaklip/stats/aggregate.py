@@ -332,7 +332,9 @@ def merge_aggregates(parts: list[AggregatedReplayStats]) -> list[PlayerPositionA
     """
     Merge multiple replay aggregates by (player_id, position).
 
-    Sums countable stats and averages rates weighted by game duration.
+    Sums countable stats. Optional mid-game / OCR scalars (CSD15, LVLD15, CS@15,
+    DPM, …) average **only games where the value is present** — missing values
+    are skipped, never treated as 0.
     """
     buckets: dict[tuple[str, Position], list[tuple[AggregatedReplayStats, PlayerPositionAggregate]]] = (
         defaultdict(list)
@@ -356,6 +358,7 @@ def merge_aggregates(parts: list[AggregatedReplayStats]) -> list[PlayerPositionA
         StatKey.OBJECTIVE_SCORE.value,
         StatKey.DAMAGE_TO_CHAMPIONS.value,
     }
+    # Present-only averages (None / absent → exclude that game from the mean).
     avg_keys = {
         StatKey.CS_AT_15.value,
         StatKey.LEVEL_AT_15.value,
