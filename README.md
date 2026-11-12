@@ -263,7 +263,8 @@ curl -X POST http://127.0.0.1:8787/api/clips/create `
    - `http://127.0.0.1:5173/obs?dir=D:\path\to\stats&position=MIDDLE&refresh=30`（開発）
    - または一体配信時 `http://127.0.0.1:8787/obs?...`
    - `position` 省略 / `ALL` で全レーン。画面上の **ALL / TOP / JG / MID / BOT / SUP** でも切替可（URL も更新）
-3. スタッツ画面にも同じレーン絞り込みあり。OBS リンクは選択中レーンを引き継ぐ
+   - `hide=TOP|PlayerA,MIDDLE|PlayerB` でプレイヤー単位のレーダー非表示（スタッツ/OBS のチップでも切替。Table・レーン比較は残す）
+3. スタッツ画面にも同じレーン絞り込み・プレイヤー表示チップあり。OBS リンクは選択中レーンと非表示プレイヤーを引き継ぐ
 4. OBS 側で **Shutdown source when not visible** は任意。背景透過はページ側で有効
 4. クロマキーしたい場合は `&chroma=%2300FF00` を付与
 

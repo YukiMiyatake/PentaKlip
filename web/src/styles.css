@@ -760,6 +760,85 @@ table.stats th {
   font-size: 0.75rem;
 }
 
+.player-visibility {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.player-visibility-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-visibility-lane {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-visibility-lane-label {
+  min-width: 2.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.player-visibility-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.player-visibility-chip {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.player-visibility-chip:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.player-visibility-chip.active {
+  opacity: 1;
+  text-decoration: none;
+  color: #0c100e;
+  background: var(--accent, #b7f255);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.player-visibility.compact {
+  margin-top: 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.player-visibility.compact .player-visibility-chip {
+  padding: 3px 8px;
+  font-size: 0.72rem;
+}
+
 /* OBS Browser Source overlay */
 html.obs-overlay,
 body.obs-overlay,

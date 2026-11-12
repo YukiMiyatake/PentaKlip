@@ -2,10 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneCompareChart } from "../components/LaneCompareChart";
 import { LaneFilterBar } from "../components/LaneFilterBar";
+import { PlayerVisibilityBar } from "../components/PlayerVisibilityBar";
 import { RadarStatChart } from "../components/RadarStatChart";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
 import { filterChartsByLane, type LaneFilter } from "../lanes";
+import {
+  encodeHiddenParam,
+  filterChartsByPlayerVisibility,
+  listPlayersFromCharts,
+  loadHiddenPlayers,
+  playersForLaneFilter,
+  saveHiddenPlayers,
+} from "../playerVisibility";
 import type { AggregatedReplayStats, ChartBundle } from "../types";
 
 export function StatsViewerPage() {
@@ -15,6 +24,9 @@ export function StatsViewerPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [laneFilter, setLaneFilter] = useState<LaneFilter>("ALL");
+  const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
+    loadHiddenPlayers(),
+  );
 
   useEffect(() => {
     getUiPreferences()
@@ -34,6 +46,11 @@ export function StatsViewerPage() {
         /* optional */
       });
   }, []);
+
+  function onHiddenChange(next: Set<string>) {
+    setHiddenPlayers(next);
+    saveHiddenPlayers(next);
+  }
 
   async function onFolderAggregate() {
     if (!directory.trim()) {
@@ -104,10 +121,20 @@ export function StatsViewerPage() {
     }
   }
 
+  const players = useMemo(
+    () => listPlayersFromCharts(bundle?.charts ?? []),
+    [bundle],
+  );
+  const playersInLane = useMemo(
+    () => playersForLaneFilter(players, laneFilter),
+    [players, laneFilter],
+  );
+
   const visible = useMemo(() => {
     const charts = bundle?.charts ?? [];
-    return filterChartsByLane(charts, laneFilter);
-  }, [bundle, laneFilter]);
+    const byLane = filterChartsByLane(charts, laneFilter);
+    return filterChartsByPlayerVisibility(byLane, hiddenPlayers);
+  }, [bundle, laneFilter, hiddenPlayers]);
 
   const compares = visible.filter((c) => c.chart_type === "lane_compare");
   const radars = visible.filter((c) => c.chart_type === "radar");
@@ -119,6 +146,9 @@ export function StatsViewerPage() {
     if (directory.trim()) u.searchParams.set("dir", directory.trim());
     u.searchParams.set("refresh", "30");
     if (laneFilter !== "ALL") u.searchParams.set("position", laneFilter);
+    if (hiddenPlayers.size > 0) {
+      u.searchParams.set("hide", encodeHiddenParam(hiddenPlayers));
+    }
     return u.toString();
   })();
 
@@ -164,7 +194,15 @@ export function StatsViewerPage() {
             {laneFilter === "ALL"
               ? `全 ${bundle.charts.length} チャート`
               : `${visible.length} / ${bundle.charts.length}`}
+            {hiddenPlayers.size > 0
+              ? ` · 非表示 ${hiddenPlayers.size} 人`
+              : ""}
           </span>
+          <PlayerVisibilityBar
+            players={playersInLane}
+            hidden={hiddenPlayers}
+            onChange={onHiddenChange}
+          />
         </div>
       ) : null}
 
