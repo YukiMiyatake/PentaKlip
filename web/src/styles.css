@@ -93,6 +93,10 @@ button {
   border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
 }
 
+.tab-panel[hidden] {
+  display: none !important;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
@@ -864,6 +868,11 @@ body.obs-overlay #root {
   background: rgba(12, 16, 14, 0.55);
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.obs-toolbar-readonly {
+  pointer-events: none;
+  opacity: 0.85;
 }
 
 .obs-radar-grid {

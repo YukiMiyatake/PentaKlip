@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getCatalog,
   getDisplaySettings,
   putDisplaySettings,
   resetDisplaySettings,
 } from "../api";
+import { notifyDisplaySettingsChanged } from "../sync";
 import type { Catalog, DisplaySettings, Position } from "../types";
 
 const POSITION_ORDER: Position[] = [
@@ -36,6 +37,8 @@ const FALLBACK_RADAR_KEYS = [
   "vision_per_min",
 ];
 
+const AUTO_SAVE_MS = 350;
+
 function positionLabel(position: Position, catalog: Catalog | null): string {
   return (
     catalog?.position_labels?.[position] ??
@@ -51,6 +54,9 @@ export function DisplaySettingsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const readyRef = useRef(false);
+  const skipAutoSaveRef = useRef(true);
+  const saveSeq = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +68,9 @@ export function DisplaySettingsPage() {
         ]);
         if (!cancelled) {
           setCatalog(cat);
+          skipAutoSaveRef.current = true;
           setSettings(normalizeSettings(disp, cat));
+          readyRef.current = true;
         }
       } catch (err) {
         if (!cancelled) setError(String(err));
@@ -72,6 +80,30 @@ export function DisplaySettingsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!readyRef.current || !settings || !catalog) return;
+    if (skipAutoSaveRef.current) {
+      skipAutoSaveRef.current = false;
+      return;
+    }
+    const seq = ++saveSeq.current;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          await putDisplaySettings(settings);
+          if (seq !== saveSeq.current) return;
+          setMessage("自動保存しました（スタッツ / OBS に反映）");
+          setError(null);
+          notifyDisplaySettingsChanged();
+        } catch (err) {
+          if (seq !== saveSeq.current) return;
+          setError(String(err));
+        }
+      })();
+    }, AUTO_SAVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [settings, catalog]);
 
   function toggle(
     kind: "table_by_position" | "charts_by_position" | "radar_by_position",
@@ -125,15 +157,18 @@ export function DisplaySettingsPage() {
     });
   }
 
-  async function onSave() {
+  async function onSaveNow() {
     if (!settings) return;
     setBusy(true);
     setError(null);
     setMessage(null);
+    saveSeq.current += 1;
     try {
       const saved = await putDisplaySettings(settings);
+      skipAutoSaveRef.current = true;
       setSettings(normalizeSettings(saved, catalog));
       setMessage("表示設定・ロースターを保存しました");
+      notifyDisplaySettingsChanged();
     } catch (err) {
       setError(String(err));
     } finally {
@@ -145,10 +180,13 @@ export function DisplaySettingsPage() {
     setBusy(true);
     setError(null);
     setMessage(null);
+    saveSeq.current += 1;
     try {
       const saved = await resetDisplaySettings();
+      skipAutoSaveRef.current = true;
       setSettings(normalizeSettings(saved, catalog));
       setMessage("デフォルトに戻しました");
+      notifyDisplaySettingsChanged();
     } catch (err) {
       setError(String(err));
     } finally {
@@ -179,13 +217,14 @@ export function DisplaySettingsPage() {
       <p className="hint">
         レーダー既定軸: CSM / KDA / KP% / CSD15 / LVLD15 / DPM / DMG% / VSPM。
         DPM・DMG% は OCR が無い試合では自動で軸から外します。CSD15 / LVLD15
-        はデータが無くても軸として残ります。
+        はデータが無くても軸として残ります。変更は自動保存され、スタッツ / OBS
+        チャートへ即反映されます。
       </p>
       <div className="row actions">
-        <button className="btn primary" disabled={busy} onClick={onSave}>
-          保存
+        <button className="btn primary" disabled={busy} onClick={() => void onSaveNow()}>
+          今すぐ保存
         </button>
-        <button className="btn" disabled={busy} onClick={onReset}>
+        <button className="btn" disabled={busy} onClick={() => void onReset()}>
           デフォルトに戻す
         </button>
       </div>
@@ -330,9 +369,8 @@ function normalizeSettings(
   settings: DisplaySettings,
   catalog: Catalog | null,
 ): DisplaySettings {
-  const positions = catalog?.positions ?? POSITION_ORDER;
-  const fallbackRadar =
-    catalog?.lck_radar_stat_keys?.map((s) => s.key) ?? FALLBACK_RADAR_KEYS;
+  if (!catalog) return settings;
+  const positions = catalog.positions;
   const table_by_position: DisplaySettings["table_by_position"] = {};
   const charts_by_position: DisplaySettings["charts_by_position"] = {};
   const radar_by_position: NonNullable<DisplaySettings["radar_by_position"]> = {};
@@ -341,9 +379,9 @@ function normalizeSettings(
     table_by_position[position] = settings.table_by_position[position] ?? [];
     charts_by_position[position] = settings.charts_by_position[position] ?? [];
     radar_by_position[position] =
-      settings.radar_by_position?.[position]?.length
-        ? settings.radar_by_position[position]!
-        : [...fallbackRadar];
+      settings.radar_by_position?.[position] ??
+      catalog.lck_radar_stat_keys?.map((s) => s.key) ??
+      FALLBACK_RADAR_KEYS;
     roster_by_position[position] = settings.roster_by_position?.[position] ?? [];
   }
   return {
