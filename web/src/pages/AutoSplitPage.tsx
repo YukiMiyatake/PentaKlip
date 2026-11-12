@@ -48,8 +48,6 @@ export function AutoSplitPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [live, setLive] = useState<EventsLiveStatus | null>(null);
-  const [exportFilename, setExportFilename] = useState("events.json");
-  const [includeStats, setIncludeStats] = useState(true);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [prefsSavedNote, setPrefsSavedNote] = useState<string | null>(null);
   const rememberTimer = useRef<number | null>(null);
@@ -227,55 +225,56 @@ export function AutoSplitPage() {
     const doHarvest = opts?.harvest !== false;
     setBusy(true);
     setError(null);
-    try {
-      const status = doHarvest ? await harvestEvents(16) : await getLiveEvents();
-      setLive(status);
-      if (status.game_id) {
-        setGameId(status.game_id);
-        await rememberPrefs({ last_game_id: status.game_id });
-      }
-      if (status.warning) setExportNote(status.warning);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveEventsJson() {
-    const gid = resolvedGameId();
-    if (!gid) {
-      setError("ゲームIDを特定できません（Live Client / 動画・イベント名 / 前回ID）");
-      return;
-    }
-    if (!outputRoot.trim()) {
-      setError("出力ベースを選んでください");
-      return;
-    }
-    setBusy(true);
-    setError(null);
     setExportNote(null);
     try {
-      await applyOutputRoot(outputRoot.trim(), { persist: true });
+      if (!doHarvest) {
+        const status = await getLiveEvents();
+        setLive(status);
+        if (status.game_id) {
+          setGameId(status.game_id);
+          await rememberPrefs({ last_game_id: status.game_id });
+        }
+        if (status.warning) setExportNote(status.warning);
+        return;
+      }
+
+      const root = outputRoot.trim();
+      if (!root) {
+        const status = await harvestEvents(16);
+        setLive(status);
+        if (status.game_id) {
+          setGameId(status.game_id);
+          await rememberPrefs({ last_game_id: status.game_id });
+        }
+        setExportNote(
+          status.warning
+            ? status.warning
+            : "出力ベース未設定のためイベント/スタッツは未保存",
+        );
+        return;
+      }
+
+      await applyOutputRoot(root, { persist: true });
       const response = await exportEvents({
-        directory: outputRoot.trim(),
-        filename: exportFilename || "events.json",
-        game_id: gid,
-        include_stats: includeStats,
+        directory: root,
+        filename: "events.json",
+        game_id: resolvedGameId() || null,
+        include_stats: true,
         harvest: true,
         harvest_speed: 16,
       });
+      const status = await getLiveEvents();
+      setLive(status);
       setGameId(response.game_id);
       setExportNote(
-        `保存 · ${response.event_count} イベント · ${response.game_id}` +
-          (response.stats_aggregated_path ? " · スタッツあり" : ""),
+        `保存 · ${response.event_count} イベント · スタッツ · ${response.game_id}`,
       );
       setEventsPath(response.path);
       setEventsDir(response.game_dir);
       await listEvents(response.game_dir);
       await rememberPrefs({
         last_events_dir: response.game_dir,
-        last_output_root: outputRoot.trim(),
+        last_output_root: root,
         last_game_id: response.game_id,
       });
     } catch (err) {
@@ -370,28 +369,10 @@ export function AutoSplitPage() {
         {live?.warning ? <p className="error">{live.warning}</p> : null}
         <div className="row">
           <button className="btn primary" disabled={busy} onClick={() => refreshLive({ harvest: true })}>
-            {busy ? "走査中…" : "試合を走査"}
+            {busy ? "走査中…" : "試合を走査して保存"}
           </button>
           <button className="btn" disabled={busy} onClick={() => refreshLive({ harvest: false })}>
             現在位置のみ
-          </button>
-          <input
-            className="text-input"
-            style={{ width: 160 }}
-            placeholder="ファイル名"
-            value={exportFilename}
-            onChange={(e) => setExportFilename(e.target.value)}
-          />
-          <label className="row" style={{ gap: 6, alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={includeStats}
-              onChange={(e) => setIncludeStats(e.target.checked)}
-            />
-            スタッツも保存
-          </label>
-          <button className="btn primary" disabled={busy} onClick={() => saveEventsJson()}>
-            JSON を保存
           </button>
         </div>
         {exportNote ? <p className="success">{exportNote}</p> : null}
