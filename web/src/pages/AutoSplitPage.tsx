@@ -25,6 +25,12 @@ function inferGameIdFromName(name: string | null | undefined): string {
   return match?.[1] ?? "";
 }
 
+function joinOsPath(root: string, ...parts: string[]): string {
+  const base = root.replace(/[/\\]+$/, "");
+  const sep = root.includes("/") && !root.includes("\\") ? "/" : "\\";
+  return [base, ...parts].join(sep);
+}
+
 export function AutoSplitPage() {
   const [prefs, setPrefs] = useState<UiPreferences | null>(null);
   const [outputRoot, setOutputRoot] = useState("");
@@ -94,10 +100,13 @@ export function AutoSplitPage() {
             // Keep remembered path even if the folder is temporarily missing.
           }
         }
-        if (p.last_events_dir) {
-          setEventsDir(p.last_events_dir);
+        const eventDir =
+          p.last_events_dir ||
+          (p.last_output_root ? joinOsPath(p.last_output_root, "Event") : "");
+        if (eventDir) {
+          setEventsDir(eventDir);
           try {
-            const listed = await listDir(p.last_events_dir, [".json"]);
+            const listed = await listDir(eventDir, [".json"]);
             setEventFiles(listed.entries.filter((e) => !e.is_dir));
           } catch {
             // Keep remembered path even if the folder is temporarily missing.
@@ -135,7 +144,7 @@ export function AutoSplitPage() {
     const partial: Partial<UiPreferences> = {};
     const root = snap.outputRoot.trim();
     const video = snap.videoDir.trim();
-    const events = snap.eventsDir.trim();
+    const events = snap.eventsDir.trim() || (root ? joinOsPath(root, "Event") : "");
     const gid = snap.gameId.trim();
     if (root) partial.last_output_root = root;
     if (video) partial.last_video_dir = video;
@@ -161,7 +170,7 @@ export function AutoSplitPage() {
       kind === "output" ? outputRoot : kind === "video" ? videoDir : eventsDir;
     const title =
       kind === "output"
-        ? "出力ルートを選択"
+        ? "出力ベースを選択"
         : kind === "video"
           ? "動画フォルダを選択"
           : "イベント JSON フォルダを選択";
@@ -170,8 +179,19 @@ export function AutoSplitPage() {
       if (picked.cancelled || !picked.path) return;
       if (kind === "output") {
         setOutputRoot(picked.path);
-        await rememberPrefs({ last_output_root: picked.path });
-        setPrefsSavedNote("出力ルートを保存しました");
+        const eventDir = joinOsPath(picked.path, "Event");
+        setEventsDir(eventDir);
+        try {
+          const listed = await listDir(eventDir, [".json"]);
+          setEventFiles(listed.entries.filter((e) => !e.is_dir));
+        } catch {
+          setEventFiles([]);
+        }
+        await rememberPrefs({
+          last_output_root: picked.path,
+          last_events_dir: eventDir,
+        });
+        setPrefsSavedNote("出力ベースを保存しました（Event / Replay / stats / Clip）");
         return;
       }
       if (kind === "video") {
@@ -284,12 +304,15 @@ export function AutoSplitPage() {
       );
       setEventsPath(response.path);
       setEventsDir(response.game_dir);
-      setOutputRoot(response.game_dir.replace(/[/\\][^/\\]+$/, ""));
+      const baseRoot =
+        outputRoot.trim() ||
+        response.game_dir.replace(/[/\\]Event[/\\]?$/i, "").replace(/[/\\][^/\\]+$/, "");
+      if (baseRoot) setOutputRoot(baseRoot);
       const listed = await listDir(response.game_dir, [".json"]);
       setEventFiles(listed.entries.filter((e) => !e.is_dir));
       await rememberPrefs({
         last_events_dir: response.game_dir,
-        last_output_root: response.game_dir.replace(/[/\\][^/\\]+$/, ""),
+        last_output_root: baseRoot || null,
         last_game_id: response.game_id,
       });
     } catch (err) {
@@ -341,31 +364,37 @@ export function AutoSplitPage() {
       ? `未接続 · ${live.error}`
       : "未取得";
 
-  const previewDir =
-    outputRoot && gameId.trim()
-      ? `${outputRoot.replace(/[/\\]+$/, "")}\\${gameId.trim()}`
-      : gameId.trim()
-        ? `{出力ルート}\\${gameId.trim()}`
-        : "（ゲームID未設定）";
+  const base = outputRoot.replace(/[/\\]+$/, "") || "{出力ベース}";
+  const gid = gameId.trim() || "{ゲームID}";
+  const previewLines = [
+    `${base}\\Event\\${gid}_events.json`,
+    `${base}\\stats\\${gid}_stats_*.json`,
+    `${base}\\Replay\\${gid}_*.mp4`,
+    `${base}\\Clip\\${gid}\\${gid}_01_label_0m10s-0m30s.mp4`,
+  ];
 
   return (
     <section className="panel">
       <h2>自動クリップ切り分け</h2>
       <p className="hint">
-        イベント JSON と切り出しクリップは、出力ルート配下の <span className="mono">ゲームID</span>{" "}
-        フォルダにまとめて保存します。ffmpeg が必要です（ツールタブで導入）。
-        <span className="mono">.webm</span> は切り分け前に自動で MP4 変換します（ゲームフォルダにキャッシュ）。
+        出力ベースを1つ指定すると、その下に <span className="mono">Event</span> /
+        <span className="mono">Replay</span> / <span className="mono">stats</span> /
+        <span className="mono">Clip/ゲームID</span> を作って保存します。ffmpeg が必要です（ツールタブ）。
+        <span className="mono">.webm</span> は <span className="mono">Replay</span> に MP4
+        変換してから切り分けます。
       </p>
 
       <div className="result-box" style={{ marginBottom: 16 }}>
-        <h3>出力先（ゲームIDフォルダ）</h3>
+        <h3>出力ベース</h3>
         <div className="row">
           <input
             className="text-input grow"
-            placeholder="出力ルート（例: D:\\PentaKlip\\matches）"
+            placeholder="出力ベース（例: D:\\PentaKlip\\out）"
             value={outputRoot}
             onChange={(e) => {
-              setOutputRoot(e.target.value);
+              const next = e.target.value;
+              setOutputRoot(next);
+              if (next.trim()) setEventsDir(joinOsPath(next.trim(), "Event"));
               scheduleRememberFolders();
             }}
             onBlur={() => rememberFoldersFromInputs().catch((e) => setError(String(e)))}
@@ -395,13 +424,18 @@ export function AutoSplitPage() {
             固定ROFLから取得
           </button>
         </div>
-        <p className="mono hint">保存先プレビュー: {previewDir}</p>
+        <p className="mono hint">保存先プレビュー:</p>
+        <ul className="mono hint" style={{ marginTop: 4 }}>
+          {previewLines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
         {prefsSavedNote ? <p className="success">{prefsSavedNote}</p> : null}
         {gameIdSource ? <p className="hint">ゲームID出典: {gameIdSource}</p> : null}
         <p className="hint">
           ROFL の gameId（数だけなら <span className="mono">JP1-</span> を付与）やファイル名、DB
-          の元マッチIDから自動取得します。フォルダ名が衝突すると{" "}
-          <span className="mono">ID-1</span> のように連番します。
+          の元マッチIDから自動取得します。Event/stats はファイル名にゲームIDを付け、クリップは{" "}
+          <span className="mono">Clip/ゲームID</span> 以下に時間帯付きで保存します。
         </p>
       </div>
 

@@ -161,6 +161,71 @@ def resolve_game_dir(base_dir: Path | str, game_id: str) -> Path:
     return (base / sanitize_game_id(game_id)).resolve()
 
 
+# Standard output tree under a single configurable base folder.
+EVENT_DIR_NAME = "Event"
+REPLAY_DIR_NAME = "Replay"
+STATS_DIR_NAME = "stats"
+CLIP_DIR_NAME = "Clip"
+
+
+class OutputLayout:
+    """
+    ``{root}/Event``, ``Replay``, ``stats``, ``Clip/{game_id}``.
+
+    Event / stats files are flat under their folders and use a game-id filename prefix.
+    Clips are grouped per game under ``Clip/{game_id}/``.
+    """
+
+    def __init__(self, root: Path | str) -> None:
+        self.root = Path(root).expanduser().resolve()
+
+    @property
+    def event_dir(self) -> Path:
+        return self.root / EVENT_DIR_NAME
+
+    @property
+    def replay_dir(self) -> Path:
+        return self.root / REPLAY_DIR_NAME
+
+    @property
+    def stats_dir(self) -> Path:
+        return self.root / STATS_DIR_NAME
+
+    @property
+    def clip_root(self) -> Path:
+        return self.root / CLIP_DIR_NAME
+
+    def clip_dir(self, game_id: str) -> Path:
+        return allocate_game_dir(self.clip_root, game_id)
+
+    def ensure(self) -> None:
+        for path in (self.event_dir, self.replay_dir, self.stats_dir, self.clip_root):
+            path.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_output_layout(
+    base_dir: Path | str | None,
+    *,
+    fallback: Path | str,
+) -> OutputLayout:
+    root = Path(base_dir).expanduser() if base_dir else Path(fallback).expanduser()
+    return OutputLayout(root)
+
+
+def format_clip_time_range(start_sec: float, end_sec: float) -> str:
+    """Human-readable clip window for filenames, e.g. ``1m05s-1m25s``."""
+
+    def _fmt(total_sec: float) -> str:
+        total = max(0, int(total_sec))
+        minutes, seconds = divmod(total, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours}h{minutes:02d}m{seconds:02d}s"
+        return f"{minutes}m{seconds:02d}s"
+
+    return f"{_fmt(start_sec)}-{_fmt(end_sec)}"
+
+
 def _events_meta_game_id(folder: Path) -> str | None:
     candidates = sorted(folder.glob("*_events.json")) + sorted(folder.glob("events.json"))
     for events in candidates:

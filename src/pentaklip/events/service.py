@@ -10,9 +10,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from pentaklip.paths import (
-    allocate_game_dir,
+    EVENT_DIR_NAME,
+    OutputLayout,
     extract_game_id_from_live_payload,
     sanitize_game_id,
+    unique_file_path,
     with_game_id_prefix,
 )
 from pentaklip.record.live_client import LiveClientClient
@@ -203,7 +205,8 @@ def resolve_export_path(
         return Path(output_path).expanduser().resolve()
 
     root = Path(directory).expanduser() if directory else (default_dir or Path.cwd())
-    base = allocate_game_dir(root, game_id) if game_id else root.resolve()
+    layout = OutputLayout(root)
+    target_dir = layout.event_dir
     if filename:
         name = filename
     elif game_id:
@@ -214,7 +217,7 @@ def resolve_export_path(
         name = f"{name}.json"
     if game_id:
         name = with_game_id_prefix(game_id, name)
-    return (base / name).resolve()
+    return unique_file_path((target_dir / name).resolve())
 
 
 def build_stats_bundle_from_all_game_data(
@@ -262,11 +265,13 @@ def export_events_json(
     """
     Write events to a JSON file compatible with /api/clips/auto-split.
 
-    Files are stored under ``{directory|default}/{game_id}/`` unless ``output_path``
-    is an explicit file path. If ``events`` is omitted, fetch from Live Client.
+    Default layout (when ``directory``/``default_dir`` is the output base):
+    ``{base}/Event/{game_id}_events.json`` and stats under ``{base}/stats/``.
+    Pass ``output_path`` for an explicit file path. If ``events`` is omitted,
+    fetch from Live Client.
 
     When ``include_stats`` is True and allgamedata is available, also write
-    ``stats_bundle.json`` (one snapshot) and ``stats_aggregated.json`` beside events.
+    ``{game_id}_stats_bundle.json`` and ``{game_id}_stats_aggregated.json``.
     """
     resolved_events = list(events) if events is not None else None
     resolved_time = game_time_sec
@@ -317,9 +322,18 @@ def export_events_json(
         default_dir=default_dir,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    # If only output_path was given, still record folder name as game id when possible.
-    # Folder may be game_id-1 on collision; persist the actual folder name.
-    resolved_game_id = sanitize_game_id(path.parent.name)
+
+    # Prefer explicit game_id; fall back to filename prefix or legacy per-game folder name.
+    if resolved_game_id is None:
+        stem = path.stem
+        if "_events" in stem.lower():
+            maybe = stem[: stem.lower().rfind("_events")]
+            if maybe:
+                resolved_game_id = sanitize_game_id(maybe)
+        if resolved_game_id is None and path.parent.name != EVENT_DIR_NAME:
+            resolved_game_id = sanitize_game_id(path.parent.name)
+
+    assert resolved_game_id is not None
 
     document = build_events_document(
         resolved_events,
@@ -339,11 +353,21 @@ def export_events_json(
         )
         if player_count is None:
             player_count = len(bundle.snapshots[0].players) if bundle.snapshots else None
+        # Stats live under {base}/stats when Event/ is used; else beside the events file.
+        if path.parent.name == EVENT_DIR_NAME:
+            stats_dir = path.parent.parent / "stats"
+        else:
+            stats_dir = path.parent
+        stats_dir.mkdir(parents=True, exist_ok=True)
         stats_prefix = with_game_id_prefix(resolved_game_id, "stats_bundle.json")
         agg_name = with_game_id_prefix(resolved_game_id, "stats_aggregated.json")
-        bundle_path = export_replay_stats(bundle, path.parent / stats_prefix)
+        bundle_path = export_replay_stats(
+            bundle, unique_file_path(stats_dir / stats_prefix)
+        )
         aggregated = aggregate_replay(bundle)
-        aggregated_path = export_aggregated_stats(aggregated, path.parent / agg_name)
+        aggregated_path = export_aggregated_stats(
+            aggregated, unique_file_path(stats_dir / agg_name)
+        )
         stats_bundle_path = str(bundle_path)
         stats_aggregated_path = str(aggregated_path)
 
