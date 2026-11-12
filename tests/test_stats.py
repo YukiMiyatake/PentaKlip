@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -141,6 +142,24 @@ def test_display_settings_per_lane_filter() -> None:
     assert "Kills" in top_table.columns
     assert "CSM" in top_table.columns
     assert "Vision Score" not in top_table.columns
+
+def test_load_display_settings_ignores_unknown_stat_keys(tmp_path: Path) -> None:
+    """Newer settings (e.g. dpm) must not 500 when running an older StatKey set."""
+    from pentaklip.stats.display import load_display_settings, save_display_settings
+
+    settings = default_display_settings()
+    path = save_display_settings(tmp_path, settings)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["table_by_position"]["TOP"].extend(
+        ["dpm", "damage_share", "damage_to_champions", "not_a_real_stat"]
+    )
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = load_display_settings(tmp_path)
+    top_keys = {key.value for key in loaded.table_by_position[Position.TOP]}
+    assert "dpm" not in top_keys
+    assert "damage_share" not in top_keys
+    assert StatKey.KILLS.value in top_keys
 
 
 def test_merge_aggregates_by_player_and_position() -> None:
