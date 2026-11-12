@@ -151,7 +151,7 @@ export function DisplaySettingsPage() {
   if (!catalog || !settings) {
     return (
       <section className="panel">
-        <h2>スタッツ設定</h2>
+        <h2>表示設定</h2>
         <p className="hint">{error ?? "読み込み中…"}</p>
       </section>
     );
@@ -159,13 +159,8 @@ export function DisplaySettingsPage() {
 
   return (
     <section className="panel">
-      <h2>スタッツ設定</h2>
-      <p className="hint">
-        レーンごとの表示項目と、あいまい一致用のプレイヤー名（Riot ID のゲームネーム側。タグは無視）を登録します。
-        例: <span className="mono">Tanaka</span> → <span className="mono">T1 Tanaka</span> /{" "}
-        <span className="mono">T1 Tanakakun</span>
-      </p>
-      <div className="row" style={{ marginBottom: 16 }}>
+      <h2>表示設定</h2>
+      <div className="row actions">
         <button className="btn primary" disabled={busy} onClick={onSave}>
           保存
         </button>
@@ -182,7 +177,7 @@ export function DisplaySettingsPage() {
             <article className="lane-card" key={position}>
               <h3>{positionLabel(position, catalog)}</h3>
               <div className="stat-group" style={{ marginBottom: 12 }}>
-                <h4>プレイヤー名（あいまい一致）</h4>
+                <h4>プレイヤー名</h4>
                 <div className="row" style={{ marginBottom: 8 }}>
                   <input
                     className="text-input grow"

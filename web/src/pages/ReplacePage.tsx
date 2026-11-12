@@ -144,7 +144,7 @@ export function ReplacePage() {
         fixed_target_rofl: path,
         last_replays_dir: replaysDir || null,
       });
-      setMessage("置き換え先を固定しました（選び直すまで維持）");
+      setMessage("置き換え先を保存しました");
     } catch (err) {
       setError(String(err));
     }
@@ -172,10 +172,10 @@ export function ReplacePage() {
           last_replays_dir: listed.directory,
           fixed_target_rofl: match.path,
         });
-        setMessage(`置き換え先フォルダを更新（ファイル維持）: ${match.filename}`);
+        setMessage(`フォルダ更新 · ${match.filename}`);
       } else {
         await rememberPrefs({ last_replays_dir: listed.directory });
-        setMessage(`置き換え先フォルダを更新しました: ${listed.directory}`);
+        setMessage("フォルダを更新しました");
       }
     } catch (err) {
       setError(String(err));
@@ -202,7 +202,7 @@ export function ReplacePage() {
       } else {
         await rememberPrefs({ last_replays_dir: listed.directory });
       }
-      setMessage(`LoL 既定フォルダに戻しました: ${listed.directory}`);
+      setMessage("既定フォルダに戻しました");
     } catch (err) {
       setError(String(err));
     }
@@ -276,18 +276,11 @@ export function ReplacePage() {
 
   return (
     <section className="panel">
-      <h2>リプレイ置き換え</h2>
-      <p className="hint">
-        LoL のリプレイフォルダにあるローカル .rofl を置き換え先として固定し、ダウンロードした
-        .rofl をその ID 名でコピーします。元のゲーム ID はサーバ側 DB に保存されます。
-      </p>
+      <h2>置き換え</h2>
 
       <div className="split-2">
-        <div>
-          <h3>1. 置き換え先（LoL リプレイフォルダ）</h3>
-          <p className="hint">
-            初期値は LoL 既定の Replays フォルダです。パスを表示・変更でき、設定は記憶されます。
-          </p>
+        <div className="stack">
+          <h3>置き換え先</h3>
           <div className="row">
             <input
               className="text-input grow mono"
@@ -316,14 +309,7 @@ export function ReplacePage() {
               既定に戻す
             </button>
           </div>
-          {defaultReplaysDir ? (
-            <p className="mono hint" style={{ marginTop: 6 }}>
-              LoL 既定: {defaultReplaysDir}
-            </p>
-          ) : null}
-          <label className="hint" style={{ display: "block", marginTop: 10, marginBottom: 4 }}>
-            フォルダ内の .rofl（置き換え先ファイル・選択内容を記憶）
-          </label>
+          <label className="field-label">.rofl</label>
           <select
             className="select"
             value={
@@ -343,19 +329,11 @@ export function ReplacePage() {
               </option>
             ))}
           </select>
-          {targetPath ? (
-            <p className="mono hint" style={{ marginTop: 6 }}>
-              記憶中のファイル: {targetPath}
-            </p>
-          ) : null}
-          <RoflOverviewCard overview={targetOverview} title="置き換え先の概要" />
+          <RoflOverviewCard overview={targetOverview} title="概要" />
         </div>
 
-        <div>
-          <h3>2. コピー元（ダウンロードしたファイルなど）</h3>
-          <p className="hint">
-            クライアントやブラウザで落とした .rofl があるフォルダを選びます（Downloads など）。
-          </p>
+        <div className="stack">
+          <h3>コピー元</h3>
           <div className="row">
             <input
               className="text-input grow"
@@ -366,7 +344,7 @@ export function ReplacePage() {
                 if (!dir) return;
                 rememberPrefs({ last_source_dir: dir }).catch((err) => setError(String(err)));
               }}
-              placeholder="例: C:\Users\...\Downloads"
+              placeholder="Downloads など"
             />
             <button
               className="btn"
@@ -407,13 +385,13 @@ export function ReplacePage() {
                 </button>
               ))}
           </div>
-          <RoflOverviewCard overview={sourceOverview} title="コピー元の概要" />
+          <RoflOverviewCard overview={sourceOverview} title="概要" />
         </div>
       </div>
 
-      <div className="row" style={{ marginTop: 16 }}>
+      <div className="row actions">
         <button className="btn primary" disabled={busy} onClick={onCopy}>
-          コピーして貼り付け
+          コピー
         </button>
       </div>
       {message ? <p className="success">{message}</p> : null}

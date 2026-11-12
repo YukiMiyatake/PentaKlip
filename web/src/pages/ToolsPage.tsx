@@ -122,11 +122,7 @@ export function ToolsPage() {
 
   return (
     <section className="panel">
-      <h2>ffmpeg セットアップ</h2>
-      <p className="hint">
-        クリップ自動切り分けに ffmpeg が必要です。未導入なら winget で入れ、PATH
-        に追加できます。既定は GPU エンコード優先（失敗時は CPU にフォールバック）です。
-      </p>
+      <h2>ffmpeg</h2>
 
       <div className="overview-card">
         <h4>状態</h4>
@@ -152,16 +148,16 @@ export function ToolsPage() {
         ) : (
           <p>確認中…</p>
         )}
-        {status?.hints?.length ? (
-          <ul>
-            {status.hints.map((h) => (
+        {!status?.found && status?.hints?.length ? (
+          <ul className="hint-list">
+            {status.hints.slice(0, 2).map((h) => (
               <li key={h}>{h}</li>
             ))}
           </ul>
         ) : null}
       </div>
 
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="row actions">
         <button className="btn" disabled={busy} onClick={() => refresh().catch((e) => setError(String(e)))}>
           再確認
         </button>
@@ -173,13 +169,11 @@ export function ToolsPage() {
         </button>
       </div>
 
-      <div className="result-box" style={{ marginTop: 16 }}>
-        <h3>簡易設定</h3>
+      <div className="result-box">
+        <h3>設定</h3>
         {settings ? (
           <>
-            <label className="hint" style={{ display: "block", marginBottom: 6 }}>
-              ffmpeg 実行ファイル（空なら自動検出）
-            </label>
+            <label className="field-label">実行ファイル</label>
             <div className="row">
               <input
                 className="text-input grow"
@@ -194,14 +188,12 @@ export function ToolsPage() {
                 disabled={busy || !status?.path}
                 onClick={useDetectedPath}
               >
-                検出パスを入れる
+                検出を使う
               </button>
             </div>
 
-            <label className="hint" style={{ display: "block", marginTop: 12, marginBottom: 6 }}>
-              エンコーダ（GPU / CPU）
-            </label>
-            <div className="row" style={{ flexWrap: "wrap" }}>
+            <label className="field-label">エンコーダ</label>
+            <div className="row wrap">
               {ENCODER_OPTIONS.map((opt) => {
                 const listed = settings.available_encoders;
                 const unsupported =
@@ -214,39 +206,31 @@ export function ToolsPage() {
                     key={opt.value}
                     className={`btn ${settings.encoder === opt.value ? "primary" : ""}`}
                     disabled={busy}
-                    title={unsupported ? "この ffmpeg にエンコーダが見つかりません（選択は可・実行時フォールバック）" : opt.hint}
+                    title={unsupported ? "未対応の可能性あり" : opt.hint}
                     onClick={() => setSettings({ ...settings, encoder: opt.value })}
                   >
                     {opt.label}
-                    <span className="hint"> · {opt.hint}</span>
                   </button>
                 );
               })}
             </div>
-            {settings.effective_codec ? (
-              <p className="mono hint" style={{ marginTop: 6 }}>
-                現在の解決先: {settings.effective_encoder}（{settings.effective_codec}）
-              </p>
-            ) : null}
 
-            <label className="hint" style={{ display: "block", marginTop: 12, marginBottom: 6 }}>
-              変換・再エンコード品質
-            </label>
-            <div className="row">
+            <label className="field-label">品質</label>
+            <div className="row wrap">
               {QUALITY_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   className={`btn ${settings.quality === opt.value ? "primary" : ""}`}
                   disabled={busy}
+                  title={opt.hint}
                   onClick={() => setSettings({ ...settings, quality: opt.value })}
                 >
                   {opt.label}
-                  <span className="hint"> · {opt.hint}</span>
                 </button>
               ))}
             </div>
 
-            <label className="row" style={{ marginTop: 12 }}>
+            <label className="row check-row">
               <input
                 type="checkbox"
                 checked={settings.auto_convert_webm}
@@ -255,10 +239,10 @@ export function ToolsPage() {
                   setSettings({ ...settings, auto_convert_webm: e.target.checked })
                 }
               />
-              <span>webm を切り分け前に MP4 へ自動変換する</span>
+              <span>webm → mp4 自動変換</span>
             </label>
 
-            <div className="row" style={{ marginTop: 12 }}>
+            <div className="row actions">
               <button className="btn primary" disabled={busy} onClick={onSaveSettings}>
                 設定を保存
               </button>
