@@ -23,10 +23,11 @@ Any of those labels is enough — **`fix` alone is valid** and must auto-merge t
 2. Workflow **Auto merge** queues GitHub auto-merge while CI runs.
 3. When **CI** succeeds, the same workflow **squash-merges immediately** (does not stop at `--auto`).
 4. If the PR is **BEHIND** `main`, the workflow runs `gh pr update-branch` and waits for the next green CI, then merges.
-5. A 15-minute cron sweep retries open typed PRs that got stuck.
-6. No type label → gate fails → **no auto-merge**.
+5. After `update-branch`, GitHub may leave follow-up workflow runs in **`action_required`** (bot-triggered). Auto merge **approves + re-runs** those runs so CI is not stuck with “no checks”.
+6. A 15-minute cron sweep retries open typed PRs that got stuck (including missing checks / `action_required`).
+7. No type label → gate fails → **no auto-merge**.
 
-Agents must not leave PRs unlabeled. Prefer letting Actions merge; if a PR stays open after green CI + label, update from main or re-run the Auto merge workflow.
+Agents must not leave PRs unlabeled. Prefer letting Actions merge; if a PR stays open after green CI + label, update from main, re-run failed/`action_required` workflow runs, or re-run the Auto merge workflow.
 
 ## Repo setup
 
