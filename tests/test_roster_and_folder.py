@@ -107,3 +107,52 @@ def test_folder_aggregate_enriches_from_scoreboard_ss(
     # Rewritten on disk
     rewritten = json.loads(path.read_text(encoding="utf-8"))
     assert rewritten["players"][0]["scalars"]["dpm"] == 400.0
+
+def test_discover_stats_one_file_per_game(tmp_path: Path) -> None:
+    from pentaklip.stats.folder_aggregate import discover_stats_files
+
+    older = tmp_path / "JP1-1_stats_aggregated.json"
+    newer = tmp_path / "JP1-1_stats_aggregated-1.json"
+    other = tmp_path / "JP1-2_stats_aggregated.json"
+    older.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "game_duration_sec": 100,
+                "players": [],
+                "original_match_id": "JP1-1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    import time
+
+    time.sleep(0.02)
+    newer.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "game_duration_sec": 200,
+                "players": [],
+                "original_match_id": "JP1-1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    other.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "game_duration_sec": 300,
+                "players": [],
+                "original_match_id": "JP1-2",
+            }
+        ),
+        encoding="utf-8",
+    )
+    found = discover_stats_files(tmp_path)
+    assert len(found) == 2
+    assert {p.name for p in found} == {
+        "JP1-1_stats_aggregated-1.json",
+        "JP1-2_stats_aggregated.json",
+    }

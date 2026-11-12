@@ -220,6 +220,23 @@ def resolve_export_path(
     return unique_file_path((target_dir / name).resolve())
 
 
+def _purge_stale_stats_files(stats_dir: Path, game_id: str) -> None:
+    """Remove ``{game_id}_stats_*-N.json`` leftovers so each game has one file."""
+    gid = sanitize_game_id(game_id)
+    if not gid or not stats_dir.is_dir():
+        return
+    patterns = (
+        f"{gid}_stats_aggregated-*.json",
+        f"{gid}_stats_bundle-*.json",
+    )
+    for pattern in patterns:
+        for path in stats_dir.glob(pattern):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
 def build_stats_bundle_from_all_game_data(
     all_game_data: dict[str, Any],
     *,
@@ -280,14 +297,18 @@ def export_events_json(
     resolved_all_data = all_game_data
     player_count: int | None = None
 
+    harvested_stats_bundle: ReplayStatsBundle | None = None
     if resolved_events is None or (include_stats and resolved_all_data is None):
         if harvest and resolved_events is None:
             from pentaklip.events.harvest import harvest_events_playthrough
 
-            status, fetched_all = harvest_events_playthrough(
+            harvested = harvest_events_playthrough(
                 live=client,
                 speed=harvest_speed,
             )
+            status = harvested.status
+            fetched_all = harvested.last_all_game_data
+            harvested_stats_bundle = harvested.stats_bundle
         else:
             status, fetched_all = fetch_live_events(client)
         if resolved_events is None:
@@ -345,12 +366,21 @@ def export_events_json(
 
     stats_bundle_path: str | None = None
     stats_aggregated_path: str | None = None
-    if include_stats and resolved_all_data is not None:
-        bundle = build_stats_bundle_from_all_game_data(
-            resolved_all_data,
-            events=resolved_events,
-            game_id=resolved_game_id,
-        )
+    if include_stats and (
+        harvested_stats_bundle is not None or resolved_all_data is not None
+    ):
+        if harvested_stats_bundle is not None and harvested_stats_bundle.snapshots:
+            bundle = harvested_stats_bundle
+            bundle.original_match_id = resolved_game_id
+            bundle.events = list(resolved_events)
+            bundle.meta["event_count"] = len(resolved_events)
+        else:
+            assert resolved_all_data is not None
+            bundle = build_stats_bundle_from_all_game_data(
+                resolved_all_data,
+                events=resolved_events,
+                game_id=resolved_game_id,
+            )
         if player_count is None:
             player_count = len(bundle.snapshots[0].players) if bundle.snapshots else None
         # Stats live under {base}/stats when Event/ is used; else beside the events file.
@@ -361,18 +391,16 @@ def export_events_json(
         stats_dir.mkdir(parents=True, exist_ok=True)
         stats_prefix = with_game_id_prefix(resolved_game_id, "stats_bundle.json")
         agg_name = with_game_id_prefix(resolved_game_id, "stats_aggregated.json")
-        bundle_path = export_replay_stats(
-            bundle, unique_file_path(stats_dir / stats_prefix)
-        )
+        # One file per game: overwrite canonical names and drop stale -N copies.
+        _purge_stale_stats_files(stats_dir, resolved_game_id)
+        bundle_path = export_replay_stats(bundle, stats_dir / stats_prefix)
         aggregated = aggregate_replay(bundle)
         from pentaklip.stats.scoreboard_ss import enrich_aggregated_from_scoreboard_ss
 
         aggregated = enrich_aggregated_from_scoreboard_ss(
             aggregated, stats_dir, resolved_game_id
         )
-        aggregated_path = export_aggregated_stats(
-            aggregated, unique_file_path(stats_dir / agg_name)
-        )
+        aggregated_path = export_aggregated_stats(aggregated, stats_dir / agg_name)
         stats_bundle_path = str(bundle_path)
         stats_aggregated_path = str(aggregated_path)
 
