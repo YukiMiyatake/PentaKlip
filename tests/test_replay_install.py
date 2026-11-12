@@ -37,3 +37,32 @@ def test_install_replay_rejects_missing(tmp_path: Path) -> None:
             local_replay_id="JP1-1",
             replays_dir=tmp_path / "Replays",
         )
+
+
+def test_api_list_local_replays_uses_directory(tmp_path: Path, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from pentaklip import config
+    from pentaklip.api.app import app
+
+    monkeypatch.setattr(config.settings, "data_dir", tmp_path / "data")
+    monkeypatch.setattr(config.settings, "lol_replays_dir", tmp_path / "LoLReplays")
+    custom = tmp_path / "custom-replays"
+    custom.mkdir()
+    (custom / "JP1-42.rofl").write_bytes(b"x")
+
+    client = TestClient(app)
+    response = client.get("/api/replays/local", params={"directory": str(custom)})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["directory"] == str(custom.resolve())
+    assert body["default_directory"] == str((tmp_path / "LoLReplays").resolve())
+    assert len(body["items"]) == 1
+    assert body["items"][0]["filename"] == "JP1-42.rofl"
+
+    prefs = client.get("/api/ui/preferences").json()
+    prefs["last_replays_dir"] = str(custom)
+    assert client.put("/api/ui/preferences", json=prefs).status_code == 200
+    remembered = client.get("/api/replays/local").json()
+    assert remembered["directory"] == str(custom.resolve())
+    assert remembered["items"][0]["match_id"] == "JP1-42"

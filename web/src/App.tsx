@@ -33,7 +33,6 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <h1>PentaKlip</h1>
-          <p>リプレイ置き換え · 自動クリップ · スタッツ</p>
         </div>
         <div className={`health ${healthOk ? "ok" : ""}`}>{health}</div>
       </header>
@@ -45,7 +44,7 @@ export default function App() {
             ["autosplit", "自動切り分け"],
             ["tools", "ffmpeg"],
             ["viewer", "スタッツ"],
-            ["settings", "スタッツ設定"],
+            ["settings", "表示設定"],
           ] as const
         ).map(([id, label]) => (
           <button

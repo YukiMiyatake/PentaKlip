@@ -2,10 +2,13 @@ import json
 from pathlib import Path
 
 from pentaklip.paths import (
+    OutputLayout,
     allocate_game_dir,
     extract_game_id_from_live_payload,
+    format_clip_time_range,
     infer_game_id,
     resolve_game_dir,
+    resolve_output_layout,
     sanitize_game_id,
     unique_file_path,
 )
@@ -53,3 +56,16 @@ def test_unique_file_path(tmp_path: Path) -> None:
     path = tmp_path / "clip.mp4"
     path.write_bytes(b"a")
     assert unique_file_path(path) == tmp_path / "clip-1.mp4"
+
+
+def test_output_layout_and_clip_time(tmp_path: Path) -> None:
+    layout = resolve_output_layout(tmp_path / "out", fallback=tmp_path)
+    layout.ensure()
+    assert layout.event_dir.is_dir()
+    assert layout.replay_dir.is_dir()
+    assert layout.stats_dir.is_dir()
+    assert layout.clip_root.is_dir()
+    assert layout.clip_dir("JP1-9") == (tmp_path / "out" / "Clip" / "JP1-9").resolve()
+    assert isinstance(layout, OutputLayout)
+    assert format_clip_time_range(65, 90) == "1m05s-1m30s"
+    assert format_clip_time_range(3661, 3725) == "1h01m01s-1h02m05s"

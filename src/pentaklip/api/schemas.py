@@ -155,10 +155,17 @@ class ChartsRequest(BaseModel):
 class UiPreferencesModel(BaseModel):
     fixed_target_rofl: str | None = None
     last_source_dir: str | None = None
+    last_replays_dir: str | None = None
     last_video_dir: str | None = None
     last_events_dir: str | None = None
     last_output_root: str | None = None
     last_game_id: str | None = None
+
+
+class LocalReplaysResponse(BaseModel):
+    directory: str
+    default_directory: str
+    items: list[LocalReplayItem]
 
 
 class ListDirRequest(BaseModel):
