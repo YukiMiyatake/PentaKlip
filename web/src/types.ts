@@ -96,6 +96,8 @@ export type UiPreferences = {
   last_events_dir: string | null;
   last_output_root: string | null;
   last_game_id: string | null;
+  /** Absolute path to ui_preferences.json (read-only from API). */
+  settings_path?: string | null;
 };
 
 export type LocalReplaysResponse = {
