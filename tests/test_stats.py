@@ -80,6 +80,10 @@ def test_capture_aggregate_and_charts_are_separated(tmp_path: Path) -> None:
     assert "damage_share" not in mid_axes
     assert "cs_at_15" not in mid_axes
     assert "ward_score" not in mid_axes
+    # Selected radar axes stay even when CSD15/LVLD15 are missing
+    assert "csd15" in mid_axes
+    assert "lvld15" in mid_axes
+    assert len(mid_axes) >= 6
 
 
 def test_csd15_and_lvld15_vs_lane_opponent() -> None:

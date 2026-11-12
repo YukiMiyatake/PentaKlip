@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from pentaklip.stats.catalog import (
+    LCK_RADAR_STAT_KEYS,
     SERIES_STAT_KEYS,
     TABLE_STAT_KEYS,
     Position,
@@ -21,13 +22,15 @@ class DisplaySettings(BaseModel):
 
     table_by_position: dict[Position, list[StatKey]] = Field(default_factory=dict)
     charts_by_position: dict[Position, list[StatKey]] = Field(default_factory=dict)
+    # Explicit radar axes (independent of table columns).
+    radar_by_position: dict[Position, list[StatKey]] = Field(default_factory=dict)
     # Registered names per lane for fuzzy Riot-ID matching (tag ignored).
     roster_by_position: dict[Position, list[str]] = Field(default_factory=dict)
 
 
 def default_display_settings() -> DisplaySettings:
     """Minimal LCK-readable defaults; extras stay available in display settings."""
-    # Radar axes lead (see LCK_RADAR_STAT_KEYS). Tables keep a tight core set.
+    # Tables keep a tight core. Radar uses LCK_RADAR_STAT_KEYS (8 axes).
     # Optional (off by default): CS, CS@15, LVL@15, Level, Team, DMG raw, OBJ,
     # Towers, Inhibitors, Gold, Items, raw K/D/A.
     core_table = [
@@ -41,7 +44,6 @@ def default_display_settings() -> DisplaySettings:
         StatKey.DAMAGE_SHARE,
         StatKey.VISION_PER_MIN,
     ]
-    # Support: vision absolute over lane CS diffs.
     support_table = [
         StatKey.CHAMPION,
         StatKey.KDA_RATIO,
@@ -58,6 +60,7 @@ def default_display_settings() -> DisplaySettings:
         StatKey.BARON_KILLS,
         StatKey.HERALD_KILLS,
     ]
+    radar = list(LCK_RADAR_STAT_KEYS)
     shared_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES]
     jg_charts = [StatKey.CS_SERIES, StatKey.KDA_SERIES, StatKey.WARD_SERIES]
     support_charts = [StatKey.WARD_SERIES, StatKey.KDA_SERIES]
@@ -78,9 +81,11 @@ def default_display_settings() -> DisplaySettings:
         Position.UTILITY: list(support_charts),
         Position.UNKNOWN: list(shared_charts),
     }
+    radar_by_position = {pos: list(radar) for pos in Position}
     return DisplaySettings(
         table_by_position=table,
         charts_by_position=charts,
+        radar_by_position=radar_by_position,
         roster_by_position={pos: [] for pos in Position},
     )
 
@@ -88,18 +93,27 @@ def default_display_settings() -> DisplaySettings:
 def validate_display_settings(settings: DisplaySettings) -> DisplaySettings:
     allowed_table = set(TABLE_STAT_KEYS)
     allowed_charts = set(SERIES_STAT_KEYS) | set(TABLE_STAT_KEYS)
+    allowed_radar = set(TABLE_STAT_KEYS)
     table: dict[Position, list[StatKey]] = {}
     charts: dict[Position, list[StatKey]] = {}
+    radar: dict[Position, list[StatKey]] = {}
     roster: dict[Position, list[str]] = {}
     for pos in Position:
         table[pos] = [k for k in settings.table_by_position.get(pos, []) if k in allowed_table]
         charts[pos] = [
             k for k in settings.charts_by_position.get(pos, []) if k in allowed_charts
         ]
+        configured_radar = settings.radar_by_position.get(pos, [])
+        if configured_radar:
+            radar[pos] = [k for k in configured_radar if k in allowed_radar]
+        else:
+            # Older settings JSON without radar_by_position → LCK defaults.
+            radar[pos] = list(LCK_RADAR_STAT_KEYS)
         roster[pos] = clean_roster_aliases(settings.roster_by_position.get(pos, []))
     return DisplaySettings(
         table_by_position=table,
         charts_by_position=charts,
+        radar_by_position=radar,
         roster_by_position=roster,
     )
 
@@ -114,7 +128,7 @@ def _sanitize_display_settings_payload(data: object) -> object:
         return data
     known = {key.value for key in StatKey}
     out = dict(data)
-    for field in ("table_by_position", "charts_by_position"):
+    for field in ("table_by_position", "charts_by_position", "radar_by_position"):
         block = out.get(field)
         if not isinstance(block, dict):
             continue

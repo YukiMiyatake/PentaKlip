@@ -25,6 +25,8 @@ export type Catalog = {
 export type DisplaySettings = {
   table_by_position: Partial<Record<Position, string[]>>;
   charts_by_position: Partial<Record<Position, string[]>>;
+  /** Explicit radar axes per lane (defaults to LCK octagon). */
+  radar_by_position?: Partial<Record<Position, string[]>>;
   roster_by_position?: Partial<Record<Position, string[]>>;
 };
 
