@@ -15,15 +15,18 @@ Create these in GitHub (Settings → Labels) if missing:
 
 CI job **PR label gate** fails unless the PR has one of: `feature`, `fix`, `chore`, `docs`, `ci`.
 
+Any of those labels is enough — **`fix` alone is valid** and must auto-merge the same as `feature`.
+
 ## Auto-merge contract
 
-1. Agent / human opens a PR with a type label (`gh pr create --label feature …`).
-2. Workflow **Auto merge** enables squash auto-merge on labeled, non-draft PRs.
-3. When **CI** succeeds, the same workflow merges (or completes the queued auto-merge).
-4. No type label → gate fails → **no auto-merge**. Do not leave PRs unlabeled.
-5. If the PR is behind `main`, update the branch so checks can finish and merge.
+1. Agent / human opens a PR with a type label (`gh pr create --label fix …`).
+2. Workflow **Auto merge** queues GitHub auto-merge while CI runs.
+3. When **CI** succeeds, the same workflow **squash-merges immediately** (does not stop at `--auto`).
+4. If the PR is **BEHIND** `main`, the workflow runs `gh pr update-branch` and waits for the next green CI, then merges.
+5. A 15-minute cron sweep retries open typed PRs that got stuck.
+6. No type label → gate fails → **no auto-merge**.
 
-Agents must not rely on manual merge; labeling + green CI is the merge path.
+Agents must not leave PRs unlabeled. Prefer letting Actions merge; if a PR stays open after green CI + label, update from main or re-run the Auto merge workflow.
 
 ## Repo setup
 
@@ -36,4 +39,4 @@ Run (admin):
 Notes:
 
 - Squash merge + delete branch on merge are enabled via script / `gh repo edit`
-- **Branch protection** and **auto-merge** on a **private** repo need **GitHub Pro** (or make the repo public). Workflows still run without protection; the merge-when-green job can still squash-merge labeled PRs with `GITHUB_TOKEN` when permissions allow.
+- GitHub-native `--auto` alone is unreliable on private free plans and when the branch is behind; this repo’s Actions job performs the real squash merge after CI is green
