@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable
 
 from pentaklip.stats.catalog import Position
@@ -12,15 +13,28 @@ from pentaklip.stats.models import AggregatedReplayStats, PlayerPositionAggregat
 _SPACE_RE = re.compile(r"\s+")
 
 
-def riot_game_name_only(value: str | None) -> str:
-    """Strip ``#tag`` and normalize whitespace/case for matching."""
+def normalize_riot_name_key(value: str | None) -> str:
+    """
+    Normalize a Riot game name for fuzzy compare.
+
+    - strips ``#tag``
+    - NFKC (full-width ↔ half-width, compatibility forms)
+    - casefold (A/a and unicode case pairs)
+    - collapses whitespace
+    """
     if not value:
         return ""
     text = str(value).strip()
     if "#" in text:
         text = text.split("#", 1)[0]
-    text = _SPACE_RE.sub(" ", text).strip().lower()
+    text = unicodedata.normalize("NFKC", text)
+    text = _SPACE_RE.sub(" ", text).strip().casefold()
     return text
+
+
+def riot_game_name_only(value: str | None) -> str:
+    """Strip ``#tag`` and normalize width/case/whitespace for matching."""
+    return normalize_riot_name_key(value)
 
 
 def fuzzy_riot_name_match(registered: str, observed: str) -> bool:
@@ -121,8 +135,8 @@ def clean_roster_aliases(values: Iterable[str] | None) -> list[str]:
         # Drop accidental tag when registering.
         if "#" in text:
             text = text.split("#", 1)[0].strip()
-        key = text.casefold()
-        if key in seen:
+        key = normalize_riot_name_key(text)
+        if not key or key in seen:
             continue
         seen.add(key)
         cleaned.append(text)

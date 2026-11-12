@@ -16,6 +16,11 @@ def test_fuzzy_riot_name_examples() -> None:
     assert fuzzy_riot_name_match("Tanaka", "T1 Tanakakun")
     assert fuzzy_riot_name_match("Tanaka", "Tanaka")
     assert not fuzzy_riot_name_match("Tanaka", "Sato#JP1")
+    # Case + full-width / half-width treated as the same.
+    assert fuzzy_riot_name_match("tanaka", "TANAKA#JP1")
+    assert fuzzy_riot_name_match("Tanaka", "Ｔａｎａｋａ#ＪＰ１")
+    assert fuzzy_riot_name_match("ﾀﾅｶ", "タナカ")
+    assert fuzzy_riot_name_match("ABC", "ａｂｃ")
 
 
 def test_resolve_roster_ignores_tag() -> None:
