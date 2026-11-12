@@ -91,6 +91,8 @@ export type UiPreferences = {
   /** LoL Replays folder used as replace destination (defaults to Documents\\...\\Replays). */
   last_replays_dir?: string | null;
   last_video_dir: string | null;
+  /** LoL Highlights folder (webm source for AutoSplit). */
+  last_highlights_dir?: string | null;
   last_events_dir: string | null;
   last_output_root: string | null;
   last_game_id: string | null;
@@ -108,6 +110,12 @@ export type FsEntry = {
   is_dir: boolean;
   size_bytes?: number | null;
   suffix?: string | null;
+};
+
+export type LocalHighlightsResponse = {
+  directory: string;
+  default_directory: string;
+  entries: FsEntry[];
 };
 
 export type LocalReplayItem = {

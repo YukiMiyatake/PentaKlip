@@ -9,6 +9,7 @@ import type {
   FfmpegSettings,
   FfmpegStatus,
   FsEntry,
+  LocalHighlightsResponse,
   LocalReplayItem,
   RoflOverview,
   UiPreferences,
@@ -108,6 +109,14 @@ export function listLocalReplays(directory?: string | null): Promise<{
 
 export function inspectRofl(path: string): Promise<RoflOverview> {
   return request(`/api/replays/inspect?path=${encodeURIComponent(path)}`);
+}
+
+export function listLocalHighlights(directory?: string | null): Promise<LocalHighlightsResponse> {
+  const q =
+    directory && directory.trim()
+      ? `?directory=${encodeURIComponent(directory.trim())}`
+      : "";
+  return request(`/api/highlights/local${q}`);
 }
 
 export function installReplay(body: {
