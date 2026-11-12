@@ -28,6 +28,8 @@ export type DisplaySettings = {
   /** Explicit radar axes per lane (defaults to LCK octagon). */
   radar_by_position?: Partial<Record<Position, string[]>>;
   roster_by_position?: Partial<Record<Position, string[]>>;
+  /** Lane × player names excluded from chart/aggregate math. */
+  excluded_players_by_position?: Partial<Record<Position, string[]>>;
 };
 
 export type TimePoint = {
@@ -59,12 +61,20 @@ export type ChartBundle = {
   display_settings_applied: Record<string, string[]>;
 };
 
+export type AggregatedPlayer = {
+  player_id: string;
+  position: Position;
+  champion_name?: string | null;
+  team?: string | null;
+  scalars?: Record<string, unknown>;
+};
+
 export type AggregatedReplayStats = {
   schema_version: number;
   original_match_id?: string | null;
   local_replay_id?: string | null;
   game_duration_sec: number;
-  players: unknown[];
+  players: AggregatedPlayer[];
   team_totals?: Record<string, Record<string, number>>;
   meta?: Record<string, unknown>;
 };

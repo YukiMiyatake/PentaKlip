@@ -263,7 +263,7 @@ curl -X POST http://127.0.0.1:8787/api/clips/create `
    - `http://127.0.0.1:5173/obs?dir=D:\path\to\stats&position=MIDDLE&refresh=30`（開発）
    - または一体配信時 `http://127.0.0.1:8787/obs?...`
    - `position` / `hide=TOP|PlayerA,...` はスタッツ画面のレーン・プレイヤー絞り込みを URL で引き継ぐ（OBS は表示専用・操作なし）
-3. レーン / プレイヤーの絞り込みはスタッツ画面で行う。表示設定の Radar / Table / 時系列変更は自動保存され、スタッツと OBS チャートへ即反映
+3. レーン / プレイヤーの絞り込みはスタッツ画面で行う（オフにしたプレイヤーはレーダー・テーブル・レーン平均など **計算からも除外**）。表示設定の Radar / Table / 時系列変更は自動保存され、スタッツと OBS チャートへ即反映
 4. OBS 側で **Shutdown source when not visible** は任意。背景透過はページ側で有効
 4. クロマキーしたい場合は `&chroma=%2300FF00` を付与
 

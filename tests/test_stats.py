@@ -205,6 +205,40 @@ def test_merge_aggregates_by_player_and_position() -> None:
     assert mid.scalars[StatKey.CREEP_SCORE.value] == 180
 
 
+def test_build_charts_skips_excluded_players_in_averages() -> None:
+    """Excluded lane×players are omitted from tables, compare, and radar baselines."""
+    from fixtures.allgamedata_sample import make_player
+
+    session = StatsCaptureSession(original_match_id="EXCL")
+    data = all_game_data_at(900.0, mid_kills=2, mid_cs=120)
+    data["allPlayers"].append(
+        make_player(
+            name="EnemyMid",
+            champion="Syndra",
+            position="MIDDLE",
+            team="CHAOS",
+            kills=1,
+            deaths=0,
+            assists=0,
+            cs=100,
+            ward=2.0,
+            level=10,
+        )
+    )
+    session.ingest_all_game_data(data)
+    aggregated = aggregate_replay(session.finalize())
+    settings = default_display_settings()
+    settings.excluded_players_by_position[Position.MIDDLE] = ["EnemyMid"]
+    charts = build_charts(aggregated, settings)
+    mid_table = next(c for c in charts.charts if c.chart_id == "table-MIDDLE")
+    assert len(mid_table.rows) == 1
+    assert mid_table.rows[0]["player_id"] == "MidLaner#JP1"
+    assert not any(c.chart_id.startswith("radar-MIDDLE-EnemyMid") for c in charts.charts)
+    mid_radar = next(c for c in charts.charts if c.chart_id.startswith("radar-MIDDLE-MidLaner"))
+    # Baseline should not be a 2-player lane average that includes EnemyMid only.
+    assert mid_radar.series[1].label in {"レーン平均", "全体平均", "平均"}
+
+
 def test_merge_averages_optional_scalars_present_only() -> None:
     """CSD15 / DPM: games without values are skipped, not treated as 0."""
     from fixtures.allgamedata_sample import make_player

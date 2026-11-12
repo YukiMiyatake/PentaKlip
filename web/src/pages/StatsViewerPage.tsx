@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
+import {
+  aggregateStatsFolder,
+  buildCharts,
+  getDisplaySettings,
+  getUiPreferences,
+  putDisplaySettings,
+} from "../api";
 import { LaneCompareChart } from "../components/LaneCompareChart";
 import { LaneFilterBar } from "../components/LaneFilterBar";
 import { PlayerVisibilityBar } from "../components/PlayerVisibilityBar";
@@ -14,17 +20,28 @@ import {
 } from "../lanes";
 import {
   encodeHiddenParam,
-  filterChartsByPlayerVisibility,
-  listPlayersFromCharts,
+  excludedToHiddenSet,
+  hiddenSetToExcluded,
+  listPlayersFromAggregated,
   loadHiddenPlayers,
   playersForLaneFilter,
   saveHiddenPlayers,
 } from "../playerVisibility";
 import {
+  notifyDisplaySettingsChanged,
   notifyViewFiltersChanged,
   subscribeDisplaySettingsChanged,
 } from "../sync";
-import type { AggregatedReplayStats, ChartBundle } from "../types";
+import type { AggregatedReplayStats, ChartBundle, Position } from "../types";
+
+const POSITIONS: Position[] = [
+  "TOP",
+  "JUNGLE",
+  "MIDDLE",
+  "BOTTOM",
+  "UTILITY",
+  "UNKNOWN",
+];
 
 export function StatsViewerPage() {
   const [directory, setDirectory] = useState("");
@@ -78,10 +95,59 @@ export function StatsViewerPage() {
     notifyViewFiltersChanged();
   }
 
-  function onHiddenChange(next: Set<string>) {
+  async function persistExclusions(next: Set<string>, agg: AggregatedReplayStats) {
+    const current = await getDisplaySettings();
+    const fromHidden = hiddenSetToExcluded(next);
+    const players = listPlayersFromAggregated(agg);
+    const touched = new Set(players.map((p) => p.position));
+    const merged: Partial<Record<Position, string[]>> = {
+      ...(current.excluded_players_by_position ?? {}),
+    };
+    for (const position of POSITIONS) {
+      if (!touched.has(position)) continue;
+      merged[position] = fromHidden[position] ?? [];
+    }
+    await putDisplaySettings({
+      ...current,
+      excluded_players_by_position: merged,
+    });
+    notifyDisplaySettingsChanged();
+  }
+
+  async function onHiddenChange(next: Set<string>) {
     setHiddenPlayers(next);
     saveHiddenPlayers(next);
     notifyViewFiltersChanged();
+    if (!aggregated) return;
+    try {
+      await persistExclusions(next, aggregated);
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function resolveHiddenForAggregate(
+    agg: AggregatedReplayStats,
+  ): Promise<Set<string>> {
+    try {
+      const settings = await getDisplaySettings();
+      const players = listPlayersFromAggregated(agg);
+      const fromSettings = excludedToHiddenSet(
+        settings.excluded_players_by_position,
+        players,
+      );
+      if (
+        fromSettings.size > 0 ||
+        Object.values(settings.excluded_players_by_position ?? {}).some(
+          (names) => (names?.length ?? 0) > 0,
+        )
+      ) {
+        return fromSettings;
+      }
+    } catch {
+      /* fall through */
+    }
+    return loadHiddenPlayers();
   }
 
   async function onFolderAggregate() {
@@ -97,6 +163,10 @@ export function StatsViewerPage() {
         apply_roster: true,
       });
       setAggregated(result.aggregated);
+      const hidden = await resolveHiddenForAggregate(result.aggregated);
+      setHiddenPlayers(hidden);
+      saveHiddenPlayers(hidden);
+      await persistExclusions(hidden, result.aggregated);
       const charts = await rebuildCharts(result.aggregated);
       const ssEnriched = Number(
         (result.aggregated.meta as { scoreboard_ss_enriched?: number } | undefined)
@@ -130,6 +200,10 @@ export function StatsViewerPage() {
       const json = JSON.parse(text) as Record<string, unknown>;
       const next = extractAggregated(json);
       setAggregated(next);
+      const hidden = await resolveHiddenForAggregate(next);
+      setHiddenPlayers(hidden);
+      saveHiddenPlayers(hidden);
+      await persistExclusions(hidden, next);
       const charts = await rebuildCharts(next);
       setMeta(
         [
@@ -148,19 +222,19 @@ export function StatsViewerPage() {
   }
 
   const players = useMemo(
-    () => listPlayersFromCharts(bundle?.charts ?? []),
-    [bundle],
+    () => listPlayersFromAggregated(aggregated),
+    [aggregated],
   );
   const playersInLane = useMemo(
     () => playersForLaneFilter(players, laneFilter),
     [players, laneFilter],
   );
 
+  // Server already dropped excluded players from tables / averages / radars.
   const visible = useMemo(() => {
     const charts = bundle?.charts ?? [];
-    const byLane = filterChartsByLane(charts, laneFilter);
-    return filterChartsByPlayerVisibility(byLane, hiddenPlayers);
-  }, [bundle, laneFilter, hiddenPlayers]);
+    return filterChartsByLane(charts, laneFilter);
+  }, [bundle, laneFilter]);
 
   const compares = visible.filter((c) => c.chart_type === "lane_compare");
   const radars = visible.filter((c) => c.chart_type === "radar");
@@ -221,13 +295,13 @@ export function StatsViewerPage() {
               ? `全 ${bundle.charts.length} チャート`
               : `${visible.length} / ${bundle.charts.length}`}
             {hiddenPlayers.size > 0
-              ? ` · 非表示 ${hiddenPlayers.size} 人`
+              ? ` · 計算除外 ${hiddenPlayers.size} 人`
               : ""}
           </span>
           <PlayerVisibilityBar
             players={playersInLane}
             hidden={hiddenPlayers}
-            onChange={onHiddenChange}
+            onChange={(next) => void onHiddenChange(next)}
           />
         </div>
       ) : null}

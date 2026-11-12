@@ -1,5 +1,10 @@
 import { LANE_FILTER_ORDER, type LaneFilter } from "./lanes";
-import type { ChartSpec, Position } from "./types";
+import type {
+  AggregatedReplayStats,
+  ChartSpec,
+  DisplaySettings,
+  Position,
+} from "./types";
 
 export type PlayerRef = {
   position: Position;
@@ -40,6 +45,18 @@ export function chartFocusPlayer(chart: ChartSpec): PlayerRef | null {
   return { position: (focus.position || position) as Position, player_id: focus.player_id };
 }
 
+function sortPlayerRefs(players: PlayerRef[]): PlayerRef[] {
+  const laneRank = new Map(
+    LANE_FILTER_ORDER.map((p, i) => [p, i] as const),
+  );
+  return [...players].sort((a, b) => {
+    const ra = laneRank.get(a.position) ?? 99;
+    const rb = laneRank.get(b.position) ?? 99;
+    if (ra !== rb) return ra - rb;
+    return a.player_id.localeCompare(b.player_id, "ja");
+  });
+}
+
 /** Unique players that have personal radar/line charts, ordered by lane then name. */
 export function listPlayersFromCharts(charts: ChartSpec[]): PlayerRef[] {
   const seen = new Map<string, PlayerRef>();
@@ -49,15 +66,71 @@ export function listPlayersFromCharts(charts: ChartSpec[]): PlayerRef[] {
     const key = playerKey(ref.position, ref.player_id);
     if (!seen.has(key)) seen.set(key, ref);
   }
-  const laneRank = new Map(
-    LANE_FILTER_ORDER.map((p, i) => [p, i] as const),
-  );
-  return [...seen.values()].sort((a, b) => {
-    const ra = laneRank.get(a.position) ?? 99;
-    const rb = laneRank.get(b.position) ?? 99;
-    if (ra !== rb) return ra - rb;
-    return a.player_id.localeCompare(b.player_id, "ja");
-  });
+  return sortPlayerRefs([...seen.values()]);
+}
+
+/** Prefer aggregated roster so excluded players stay toggleable. */
+export function listPlayersFromAggregated(
+  aggregated: AggregatedReplayStats | null | undefined,
+): PlayerRef[] {
+  const seen = new Map<string, PlayerRef>();
+  for (const player of aggregated?.players ?? []) {
+    if (!player?.player_id || !player.position) continue;
+    const ref: PlayerRef = {
+      position: player.position,
+      player_id: player.player_id,
+    };
+    const key = playerKey(ref.position, ref.player_id);
+    if (!seen.has(key)) seen.set(key, ref);
+  }
+  return sortPlayerRefs([...seen.values()]);
+}
+
+export function exclusionName(playerId: string): string {
+  const trimmed = playerId.trim();
+  if (!trimmed.includes("#")) return trimmed;
+  return trimmed.split("#", 1)[0]?.trim() || trimmed;
+}
+
+export function hiddenSetToExcluded(
+  hidden: ReadonlySet<string>,
+): Partial<Record<Position, string[]>> {
+  const buckets = new Map<Position, string[]>();
+  const seen = new Map<Position, Set<string>>();
+  for (const key of hidden) {
+    const ref = parsePlayerKey(key);
+    if (!ref) continue;
+    const name = exclusionName(ref.player_id);
+    if (!name) continue;
+    const fold = name.toLowerCase();
+    const used = seen.get(ref.position) ?? new Set<string>();
+    if (used.has(fold)) continue;
+    used.add(fold);
+    seen.set(ref.position, used);
+    const list = buckets.get(ref.position) ?? [];
+    list.push(name);
+    buckets.set(ref.position, list);
+  }
+  return Object.fromEntries(buckets) as Partial<Record<Position, string[]>>;
+}
+
+export function excludedToHiddenSet(
+  excluded: DisplaySettings["excluded_players_by_position"] | undefined,
+  players: PlayerRef[],
+): Set<string> {
+  const hidden = new Set<string>();
+  if (!excluded) return hidden;
+  for (const ref of players) {
+    const aliases = excluded[ref.position] ?? [];
+    if (aliases.length === 0) continue;
+    const obs = exclusionName(ref.player_id).toLowerCase();
+    const hit = aliases.some((alias) => {
+      const a = exclusionName(alias).toLowerCase();
+      return a === obs || obs.includes(a) || a.includes(obs);
+    });
+    if (hit) hidden.add(playerKey(ref.position, ref.player_id));
+  }
+  return hidden;
 }
 
 /**

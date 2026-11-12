@@ -375,6 +375,9 @@ function normalizeSettings(
   const charts_by_position: DisplaySettings["charts_by_position"] = {};
   const radar_by_position: NonNullable<DisplaySettings["radar_by_position"]> = {};
   const roster_by_position: NonNullable<DisplaySettings["roster_by_position"]> = {};
+  const excluded_players_by_position: NonNullable<
+    DisplaySettings["excluded_players_by_position"]
+  > = {};
   for (const position of positions) {
     table_by_position[position] = settings.table_by_position[position] ?? [];
     charts_by_position[position] = settings.charts_by_position[position] ?? [];
@@ -383,11 +386,14 @@ function normalizeSettings(
       catalog.lck_radar_stat_keys?.map((s) => s.key) ??
       FALLBACK_RADAR_KEYS;
     roster_by_position[position] = settings.roster_by_position?.[position] ?? [];
+    excluded_players_by_position[position] =
+      settings.excluded_players_by_position?.[position] ?? [];
   }
   return {
     table_by_position,
     charts_by_position,
     radar_by_position,
     roster_by_position,
+    excluded_players_by_position,
   };
 }
