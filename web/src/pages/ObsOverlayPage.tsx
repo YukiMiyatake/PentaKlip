@@ -1,22 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneFilterBar } from "../components/LaneFilterBar";
+import { PlayerVisibilityBar } from "../components/PlayerVisibilityBar";
 import { RadarStatChart } from "../components/RadarStatChart";
 import {
   filterChartsByLane,
   normalizeLaneFilter,
   type LaneFilter,
 } from "../lanes";
+import {
+  encodeHiddenParam,
+  filterChartsByPlayerVisibility,
+  listPlayersFromCharts,
+  loadHiddenPlayers,
+  parseHiddenParam,
+  playersForLaneFilter,
+  saveHiddenPlayers,
+} from "../playerVisibility";
 import type { ChartSpec } from "../types";
 
 function params() {
   return new URLSearchParams(window.location.search);
 }
 
-function writeLaneToUrl(lane: LaneFilter) {
+function writeQuery(patch: {
+  lane?: LaneFilter;
+  hidden?: ReadonlySet<string>;
+}) {
   const u = new URL(window.location.href);
-  if (lane === "ALL") u.searchParams.delete("position");
-  else u.searchParams.set("position", lane);
+  if (patch.lane !== undefined) {
+    if (patch.lane === "ALL") u.searchParams.delete("position");
+    else u.searchParams.set("position", patch.lane);
+  }
+  if (patch.hidden !== undefined) {
+    if (patch.hidden.size === 0) u.searchParams.delete("hide");
+    else u.searchParams.set("hide", encodeHiddenParam(patch.hidden));
+  }
   window.history.replaceState({}, "", u);
 }
 
@@ -27,18 +46,29 @@ export function ObsOverlayPage() {
   const refreshSec = Math.max(0, Number(q.get("refresh") || "0") || 0);
   const chroma = q.get("chroma"); // e.g. #00ff00 for chroma key
   const dirParam = q.get("dir");
+  const hideFromUrl = parseHiddenParam(q.get("hide"));
 
   const [directory, setDirectory] = useState(dirParam ?? "");
   const [laneFilter, setLaneFilter] = useState<LaneFilter>(initialLane);
+  const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() => {
+    if (hideFromUrl.size > 0) return hideFromUrl;
+    return loadHiddenPlayers();
+  });
   const [allRadars, setAllRadars] = useState<ChartSpec[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const radars = useMemo(
-    () => filterChartsByLane(allRadars, laneFilter),
-    [allRadars, laneFilter],
+  const players = useMemo(() => listPlayersFromCharts(allRadars), [allRadars]);
+  const playersInLane = useMemo(
+    () => playersForLaneFilter(players, laneFilter),
+    [players, laneFilter],
   );
+
+  const radars = useMemo(() => {
+    const byLane = filterChartsByLane(allRadars, laneFilter);
+    return filterChartsByPlayerVisibility(byLane, hiddenPlayers);
+  }, [allRadars, laneFilter, hiddenPlayers]);
 
   const load = useCallback(async (dir: string) => {
     if (!dir.trim()) {
@@ -130,7 +160,13 @@ export function ObsOverlayPage() {
 
   function onLaneChange(next: LaneFilter) {
     setLaneFilter(next);
-    writeLaneToUrl(next);
+    writeQuery({ lane: next });
+  }
+
+  function onHiddenChange(next: Set<string>) {
+    setHiddenPlayers(next);
+    saveHiddenPlayers(next);
+    writeQuery({ hidden: next });
   }
 
   return (
@@ -147,6 +183,7 @@ export function ObsOverlayPage() {
             {meta}
             {laneFilter !== "ALL" ? ` · ${laneFilter}` : ""}
             {playerFilter ? ` · player ${playerFilter}` : ""}
+            {hiddenPlayers.size > 0 ? ` · hide ${hiddenPlayers.size}` : ""}
             {` · show ${radars.length}`}
           </span>
         ) : null}
@@ -159,6 +196,12 @@ export function ObsOverlayPage() {
         >
           再読込
         </button>
+        <PlayerVisibilityBar
+          players={playersInLane}
+          hidden={hiddenPlayers}
+          onChange={onHiddenChange}
+          compact
+        />
       </div>
       {error ? <p className="error obs-error">{error}</p> : null}
       <div className="obs-radar-grid">
