@@ -1,74 +1,70 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
-import { LaneFilterBar } from "../components/LaneFilterBar";
-import { PlayerVisibilityBar } from "../components/PlayerVisibilityBar";
 import { RadarStatChart } from "../components/RadarStatChart";
 import {
   filterChartsByLane,
+  loadLaneFilter,
   normalizeLaneFilter,
   type LaneFilter,
 } from "../lanes";
 import {
-  encodeHiddenParam,
   filterChartsByPlayerVisibility,
-  listPlayersFromCharts,
   loadHiddenPlayers,
   parseHiddenParam,
-  playersForLaneFilter,
-  saveHiddenPlayers,
 } from "../playerVisibility";
+import {
+  subscribeDisplaySettingsChanged,
+  subscribeViewFiltersChanged,
+} from "../sync";
 import type { ChartSpec } from "../types";
 
 function params() {
   return new URLSearchParams(window.location.search);
 }
 
-function writeQuery(patch: {
-  lane?: LaneFilter;
-  hidden?: ReadonlySet<string>;
-}) {
-  const u = new URL(window.location.href);
-  if (patch.lane !== undefined) {
-    if (patch.lane === "ALL") u.searchParams.delete("position");
-    else u.searchParams.set("position", patch.lane);
-  }
-  if (patch.hidden !== undefined) {
-    if (patch.hidden.size === 0) u.searchParams.delete("hide");
-    else u.searchParams.set("hide", encodeHiddenParam(patch.hidden));
-  }
-  window.history.replaceState({}, "", u);
+function resolveLane(q: URLSearchParams): LaneFilter {
+  const fromUrl = q.get("position");
+  if (fromUrl != null && fromUrl !== "") return normalizeLaneFilter(fromUrl);
+  return loadLaneFilter();
 }
 
+function resolveHidden(q: URLSearchParams): Set<string> {
+  const fromUrl = parseHiddenParam(q.get("hide"));
+  if (fromUrl.size > 0) return fromUrl;
+  return loadHiddenPlayers();
+}
+
+/**
+ * Display-only OBS Browser Source. Lane / player filters are controlled from
+ * the Stats tab (or URL query written by that tab). No interactive controls.
+ */
 export function ObsOverlayPage() {
   const q = useMemo(() => params(), []);
-  const initialLane = normalizeLaneFilter(q.get("position"));
   const playerFilter = q.get("player");
   const refreshSec = Math.max(0, Number(q.get("refresh") || "0") || 0);
-  const chroma = q.get("chroma"); // e.g. #00ff00 for chroma key
+  const chroma = q.get("chroma");
   const dirParam = q.get("dir");
-  const hideFromUrl = parseHiddenParam(q.get("hide"));
 
   const [directory, setDirectory] = useState(dirParam ?? "");
-  const [laneFilter, setLaneFilter] = useState<LaneFilter>(initialLane);
-  const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() => {
-    if (hideFromUrl.size > 0) return hideFromUrl;
-    return loadHiddenPlayers();
-  });
+  const [laneFilter, setLaneFilter] = useState<LaneFilter>(() => resolveLane(q));
+  const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
+    resolveHidden(q),
+  );
   const [allRadars, setAllRadars] = useState<ChartSpec[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const players = useMemo(() => listPlayersFromCharts(allRadars), [allRadars]);
-  const playersInLane = useMemo(
-    () => playersForLaneFilter(players, laneFilter),
-    [players, laneFilter],
-  );
-
   const radars = useMemo(() => {
     const byLane = filterChartsByLane(allRadars, laneFilter);
     return filterChartsByPlayerVisibility(byLane, hiddenPlayers);
   }, [allRadars, laneFilter, hiddenPlayers]);
+
+  const syncFiltersFromStorage = useCallback(() => {
+    const latest = params();
+    setLaneFilter(resolveLane(latest));
+    setHiddenPlayers(resolveHidden(latest));
+  }, []);
 
   const load = useCallback(async (dir: string) => {
     if (!dir.trim()) {
@@ -144,6 +140,29 @@ export function ObsOverlayPage() {
   }, [directory, load, refreshSec]);
 
   useEffect(() => {
+    const onSettings = () => {
+      if (directory) void load(directory);
+    };
+    const onFilters = () => syncFiltersFromStorage();
+    const offSettings = subscribeDisplaySettingsChanged(onSettings);
+    const offFilters = subscribeViewFiltersChanged(onFilters);
+    const onStorage = (ev: StorageEvent) => {
+      if (
+        ev.key === "pentaklip.hiddenPlayerStats" ||
+        ev.key === "pentaklip.laneFilter"
+      ) {
+        syncFiltersFromStorage();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      offSettings();
+      offFilters();
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [directory, load, syncFiltersFromStorage]);
+
+  useEffect(() => {
     document.documentElement.classList.add("obs-overlay");
     document.body.classList.add("obs-overlay");
     if (chroma) {
@@ -158,26 +177,10 @@ export function ObsOverlayPage() {
     };
   }, [chroma]);
 
-  function onLaneChange(next: LaneFilter) {
-    setLaneFilter(next);
-    writeQuery({ lane: next });
-  }
-
-  function onHiddenChange(next: Set<string>) {
-    setHiddenPlayers(next);
-    saveHiddenPlayers(next);
-    writeQuery({ hidden: next });
-  }
-
   return (
     <div className="obs-root">
-      <div className="obs-toolbar">
+      <div className="obs-toolbar obs-toolbar-readonly" aria-hidden="true">
         <span className="mono">OBS · radar</span>
-        <LaneFilterBar
-          value={laneFilter}
-          onChange={onLaneChange}
-          compact
-        />
         {meta ? (
           <span>
             {meta}
@@ -185,23 +188,9 @@ export function ObsOverlayPage() {
             {playerFilter ? ` · player ${playerFilter}` : ""}
             {hiddenPlayers.size > 0 ? ` · hide ${hiddenPlayers.size}` : ""}
             {` · show ${radars.length}`}
+            {busy ? " · …" : ""}
           </span>
         ) : null}
-        {busy ? <span>更新中…</span> : null}
-        <button
-          type="button"
-          className="btn"
-          disabled={busy || !directory}
-          onClick={() => void load(directory)}
-        >
-          再読込
-        </button>
-        <PlayerVisibilityBar
-          players={playersInLane}
-          hidden={hiddenPlayers}
-          onChange={onHiddenChange}
-          compact
-        />
       </div>
       {error ? <p className="error obs-error">{error}</p> : null}
       <div className="obs-radar-grid">
@@ -211,7 +200,8 @@ export function ObsOverlayPage() {
       </div>
       {!busy && radars.length === 0 && !error ? (
         <p className="hint obs-hint">
-          レーダーがありません。例:{" "}
+          レーダーがありません。スタッツ画面でレーン / プレイヤーを選び、OBS
+          リンクを開いてください。例:{" "}
           <span className="mono">
             /obs?dir=D:\stats&amp;position=MIDDLE&amp;refresh=30
           </span>

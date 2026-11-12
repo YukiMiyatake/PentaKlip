@@ -50,3 +50,22 @@ export function filterChartsByLane(
 ): ChartSpec[] {
   return charts.filter((chart) => chartMatchesLane(chart, filter));
 }
+
+const LANE_STORAGE_KEY = "pentaklip.laneFilter";
+
+export function loadLaneFilter(): LaneFilter {
+  try {
+    return normalizeLaneFilter(localStorage.getItem(LANE_STORAGE_KEY));
+  } catch {
+    return "ALL";
+  }
+}
+
+export function saveLaneFilter(filter: LaneFilter): void {
+  try {
+    if (filter === "ALL") localStorage.removeItem(LANE_STORAGE_KEY);
+    else localStorage.setItem(LANE_STORAGE_KEY, filter);
+  } catch {
+    /* ignore */
+  }
+}

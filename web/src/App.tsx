@@ -57,11 +57,22 @@ export default function App() {
         ))}
       </nav>
 
-      {tab === "replace" ? <ReplacePage /> : null}
-      {tab === "autosplit" ? <AutoSplitPage /> : null}
-      {tab === "tools" ? <ToolsPage /> : null}
-      {tab === "viewer" ? <StatsViewerPage /> : null}
-      {tab === "settings" ? <DisplaySettingsPage /> : null}
+      {/* Keep pages mounted so Stats charts survive tab switches. */}
+      <div className="tab-panel" hidden={tab !== "replace"}>
+        <ReplacePage />
+      </div>
+      <div className="tab-panel" hidden={tab !== "autosplit"}>
+        <AutoSplitPage />
+      </div>
+      <div className="tab-panel" hidden={tab !== "tools"}>
+        <ToolsPage />
+      </div>
+      <div className="tab-panel" hidden={tab !== "viewer"}>
+        <StatsViewerPage />
+      </div>
+      <div className="tab-panel" hidden={tab !== "settings"}>
+        <DisplaySettingsPage />
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneCompareChart } from "../components/LaneCompareChart";
 import { LaneFilterBar } from "../components/LaneFilterBar";
@@ -6,7 +6,12 @@ import { PlayerVisibilityBar } from "../components/PlayerVisibilityBar";
 import { RadarStatChart } from "../components/RadarStatChart";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
-import { filterChartsByLane, type LaneFilter } from "../lanes";
+import {
+  filterChartsByLane,
+  loadLaneFilter,
+  saveLaneFilter,
+  type LaneFilter,
+} from "../lanes";
 import {
   encodeHiddenParam,
   filterChartsByPlayerVisibility,
@@ -15,15 +20,22 @@ import {
   playersForLaneFilter,
   saveHiddenPlayers,
 } from "../playerVisibility";
+import {
+  notifyViewFiltersChanged,
+  subscribeDisplaySettingsChanged,
+} from "../sync";
 import type { AggregatedReplayStats, ChartBundle } from "../types";
 
 export function StatsViewerPage() {
   const [directory, setDirectory] = useState("");
+  const [aggregated, setAggregated] = useState<AggregatedReplayStats | null>(
+    null,
+  );
   const [bundle, setBundle] = useState<ChartBundle | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [laneFilter, setLaneFilter] = useState<LaneFilter>("ALL");
+  const [laneFilter, setLaneFilter] = useState<LaneFilter>(() => loadLaneFilter());
   const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
     loadHiddenPlayers(),
   );
@@ -47,9 +59,29 @@ export function StatsViewerPage() {
       });
   }, []);
 
+  const rebuildCharts = useCallback(async (agg: AggregatedReplayStats) => {
+    const charts = await buildCharts(agg);
+    setBundle(charts);
+    return charts;
+  }, []);
+
+  useEffect(() => {
+    return subscribeDisplaySettingsChanged(() => {
+      if (!aggregated) return;
+      void rebuildCharts(aggregated).catch((err) => setError(String(err)));
+    });
+  }, [aggregated, rebuildCharts]);
+
+  function onLaneChange(next: LaneFilter) {
+    setLaneFilter(next);
+    saveLaneFilter(next);
+    notifyViewFiltersChanged();
+  }
+
   function onHiddenChange(next: Set<string>) {
     setHiddenPlayers(next);
     saveHiddenPlayers(next);
+    notifyViewFiltersChanged();
   }
 
   async function onFolderAggregate() {
@@ -59,15 +91,13 @@ export function StatsViewerPage() {
     }
     setBusy(true);
     setError(null);
-    setBundle(null);
-    setMeta(null);
     try {
       const result = await aggregateStatsFolder({
         directory: directory.trim(),
         apply_roster: true,
       });
-      const charts = await buildCharts(result.aggregated);
-      setBundle(charts);
+      setAggregated(result.aggregated);
+      const charts = await rebuildCharts(result.aggregated);
       const ssEnriched = Number(
         (result.aggregated.meta as { scoreboard_ss_enriched?: number } | undefined)
           ?.scoreboard_ss_enriched ?? 0,
@@ -95,20 +125,16 @@ export function StatsViewerPage() {
     if (!file) return;
     setBusy(true);
     setError(null);
-    setBundle(null);
-    setMeta(null);
     try {
       const text = await file.text();
       const json = JSON.parse(text) as Record<string, unknown>;
-      const aggregated = extractAggregated(json);
-      const charts = await buildCharts(aggregated);
-      setBundle(charts);
+      const next = extractAggregated(json);
+      setAggregated(next);
+      const charts = await rebuildCharts(next);
       setMeta(
         [
-          aggregated.original_match_id
-            ? `match: ${aggregated.original_match_id}`
-            : null,
-          `duration: ${aggregated.game_duration_sec.toFixed(0)}s`,
+          next.original_match_id ? `match: ${next.original_match_id}` : null,
+          `duration: ${next.game_duration_sec.toFixed(0)}s`,
           `charts: ${charts.charts.length}`,
         ]
           .filter(Boolean)
@@ -167,7 +193,7 @@ export function StatsViewerPage() {
           <button
             className="btn primary"
             disabled={busy}
-            onClick={() => onFolderAggregate()}
+            onClick={() => void onFolderAggregate()}
           >
             {busy ? "集計中…" : "集計"}
           </button>
@@ -177,7 +203,7 @@ export function StatsViewerPage() {
             type="file"
             accept=".json,application/json"
             disabled={busy}
-            onChange={(event) => onFile(event.target.files?.[0] ?? null)}
+            onChange={(event) => void onFile(event.target.files?.[0] ?? null)}
           />
           <a className="btn ghost" href={obsUrl} target="_blank" rel="noreferrer">
             OBS
@@ -189,7 +215,7 @@ export function StatsViewerPage() {
 
       {bundle ? (
         <div className="lane-filter-row">
-          <LaneFilterBar value={laneFilter} onChange={setLaneFilter} />
+          <LaneFilterBar value={laneFilter} onChange={onLaneChange} />
           <span className="hint">
             {laneFilter === "ALL"
               ? `全 ${bundle.charts.length} チャート`
