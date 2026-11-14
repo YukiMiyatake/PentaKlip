@@ -10,14 +10,17 @@ export const RADAR_LAYOUT_DEFAULT_COLS = 3;
 export const RADAR_LAYOUT_DEFAULT_ROWS = 3;
 
 /** Fixed cell size (px) shared by Stats / OBS. */
-export const RADAR_CELL_WIDTH = 300;
-export const RADAR_CELL_HEIGHT = 340;
-export const RADAR_CELL_WIDTH_COMPACT = 280;
-export const RADAR_CELL_HEIGHT_COMPACT = 300;
+export const RADAR_CELL_WIDTH = 340;
+export const RADAR_CELL_HEIGHT = 400;
+export const RADAR_CELL_WIDTH_COMPACT = 320;
+export const RADAR_CELL_HEIGHT_COMPACT = 380;
+export const RADAR_HEADER_MAX_LEN = 80;
 
 export type RadarLayoutState = {
   cols: number;
   rows: number;
+  /** One-line team / title shown above the grid. */
+  headerText: string;
   /**
    * chart_id → linear slot index (row-major: row * cols + col).
    * Missing ids are auto-placed; empty slots = gaps.
@@ -29,8 +32,15 @@ export function defaultRadarLayout(): RadarLayoutState {
   return {
     cols: RADAR_LAYOUT_DEFAULT_COLS,
     rows: RADAR_LAYOUT_DEFAULT_ROWS,
+    headerText: "",
     positions: {},
   };
+}
+
+export function normalizeRadarHeaderText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const oneLine = value.replace(/[\r\n]+/g, " ").trimStart();
+  return oneLine.slice(0, RADAR_HEADER_MAX_LEN);
 }
 
 function clampInt(n: number, min: number, max: number, fallback: number): number {
@@ -65,7 +75,12 @@ export function normalizeRadarLayout(raw: unknown): RadarLayoutState {
       positions[id] = idx;
     }
   }
-  return { cols, rows, positions };
+  return {
+    cols,
+    rows,
+    headerText: normalizeRadarHeaderText(obj.headerText),
+    positions,
+  };
 }
 
 export function loadRadarLayout(): RadarLayoutState {
@@ -172,7 +187,12 @@ export function ensureRadarLayout(
     if (positions[id] == null) placeOne(id);
   }
 
-  return { cols, rows, positions };
+  return {
+    cols,
+    rows,
+    headerText: normalizeRadarHeaderText(layout.headerText),
+    positions,
+  };
 }
 
 export function resizeRadarLayout(
@@ -219,8 +239,24 @@ export function moveRadarChart(
   return { ...ensured, positions };
 }
 
-export function resetRadarLayout(chartIds: string[]): RadarLayoutState {
-  return ensureRadarLayout(defaultRadarLayout(), chartIds);
+export function resetRadarLayout(
+  chartIds: string[],
+  headerText = "",
+): RadarLayoutState {
+  return ensureRadarLayout(
+    { ...defaultRadarLayout(), headerText: normalizeRadarHeaderText(headerText) },
+    chartIds,
+  );
+}
+
+export function setRadarLayoutHeader(
+  layout: RadarLayoutState,
+  headerText: string,
+): RadarLayoutState {
+  return {
+    ...layout,
+    headerText: normalizeRadarHeaderText(headerText),
+  };
 }
 
 export function slotToCell(

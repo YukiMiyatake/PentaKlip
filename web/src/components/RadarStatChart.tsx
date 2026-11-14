@@ -49,7 +49,7 @@ export function RadarStatChart({
     [chart.rows, scaleMode, thresholdPct],
   );
 
-  const height = compact ? 260 : 320;
+  const height = compact ? 300 : 340;
 
   return (
     <section className={`chart-card radar-card${compact ? " compact" : ""}`}>
@@ -62,7 +62,7 @@ export function RadarStatChart({
         </span>
       </p>
       <ResponsiveContainer width="100%" height={height}>
-        <RadarChart data={data} cx="50%" cy="52%" outerRadius="72%">
+        <RadarChart data={data} cx="50%" cy="50%" outerRadius="68%">
           <PolarGrid stroke="#3a4a42" />
           <PolarAngleAxis
             dataKey="axis"

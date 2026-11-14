@@ -22,6 +22,7 @@ import {
   resetRadarLayout,
   resizeRadarLayout,
   saveRadarLayout,
+  setRadarLayoutHeader,
   type RadarLayoutState,
 } from "../radarLayout";
 import {
@@ -414,7 +415,12 @@ export function StatsViewerPage({ active = true }: Props) {
               persistRadarLayout(resizeRadarLayout(radarLayout, radarLayout.cols, rows, ids));
             }}
             onReset={() => {
-              persistRadarLayout(resetRadarLayout(radars.map((c) => c.chart_id)));
+              persistRadarLayout(
+                resetRadarLayout(
+                  radars.map((c) => c.chart_id),
+                  radarLayout.headerText,
+                ),
+              );
             }}
           />
           <RadarLayoutGrid
@@ -423,6 +429,9 @@ export function StatsViewerPage({ active = true }: Props) {
             onMove={(chartId, toSlot) => {
               const ids = radars.map((c) => c.chart_id);
               persistRadarLayout(moveRadarChart(radarLayout, chartId, toSlot, ids));
+            }}
+            onHeaderChange={(text) => {
+              persistRadarLayout(setRadarLayoutHeader(radarLayout, text));
             }}
             renderChart={(chart) => (
               <RadarStatChart

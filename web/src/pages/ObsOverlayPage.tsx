@@ -12,6 +12,7 @@ import {
   resetRadarLayout,
   resizeRadarLayout,
   saveRadarLayout,
+  setRadarLayoutHeader,
   type RadarLayoutState,
 } from "../radarLayout";
 import {
@@ -330,7 +331,10 @@ export function ObsOverlayPage() {
             }}
             onReset={() => {
               persistRadarLayout(
-                resetRadarLayout(radars.map((c) => c.chart_id)),
+                resetRadarLayout(
+                  radars.map((c) => c.chart_id),
+                  radarLayout.headerText,
+                ),
               );
             }}
           />
@@ -343,6 +347,9 @@ export function ObsOverlayPage() {
               persistRadarLayout(
                 moveRadarChart(radarLayout, chartId, toSlot, ids),
               );
+            }}
+            onHeaderChange={(text) => {
+              persistRadarLayout(setRadarLayoutHeader(radarLayout, text));
             }}
             renderChart={(chart) => (
               <RadarStatChart
