@@ -35,6 +35,13 @@ export function RoflOverviewCard({ overview, title }: Props) {
             {overview.match_id_source ? ` · ${overview.match_id_source}` : ""}
           </dd>
         </div>
+        {overview.original_match_id &&
+        overview.original_match_id !== overview.match_id ? (
+          <div>
+            <dt>出力ゲーム ID</dt>
+            <dd className="mono">{overview.original_match_id}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>形式</dt>
           <dd>{overview.format ?? "—"}</dd>

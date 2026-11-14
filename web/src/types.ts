@@ -84,6 +84,8 @@ export type RoflOverview = {
   filename: string;
   match_id?: string | null;
   match_id_source?: "meta" | "meta_fingerprint" | "filename" | "db" | null;
+  /** Pre-copy original from replace DB (output prefixes). */
+  original_match_id?: string | null;
   format?: string | null;
   game_version?: string | null;
   game_length_ms?: number | null;

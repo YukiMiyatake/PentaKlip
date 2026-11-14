@@ -22,6 +22,8 @@ class RoflOverview(BaseModel):
     filename: str
     match_id: str | None = None
     match_id_source: Literal["meta", "meta_fingerprint", "filename", "db"] | None = None
+    # Pre-copy original from replace DB (does not change on-disk local filename id).
+    original_match_id: str | None = None
     format: str | None = None
     game_version: str | None = None
     game_length_ms: int | None = None

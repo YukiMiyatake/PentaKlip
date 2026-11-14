@@ -123,7 +123,8 @@ def test_auto_split_after_second_replace_uses_latest_original(
     overview = client.get(
         "/api/replays/inspect", params={"path": str(installed)}
     ).json()
-    assert overview["match_id"] == "KR-222222222"
+    assert overview["match_id"] == "JP1-111"
+    assert overview["original_match_id"] == "KR-222222222"
 
     video = tmp_path / "vid.mp4"
     video.write_bytes(b"video")

@@ -240,8 +240,11 @@ export function AutoSplitPage() {
       (listed?.original_match_id || matchId || localId || "").trim();
     try {
       const overview = await inspectRofl(path);
-      // inspect overlays replace-DB original onto match_id.
-      if (overview.match_id) outputId = overview.match_id;
+      // Prefer replace-DB original; keep filename match_id as local only.
+      if (overview.original_match_id) outputId = overview.original_match_id;
+      else if (!listed?.original_match_id && overview.match_id) {
+        outputId = overview.match_id;
+      }
     } catch {
       // list / filename fallback is enough
     }
