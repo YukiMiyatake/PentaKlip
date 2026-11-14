@@ -31,8 +31,15 @@ import {
   notifyDisplaySettingsChanged,
   notifyViewFiltersChanged,
   subscribeDisplaySettingsChanged,
+  subscribeOutputRootChanged,
 } from "../sync";
 import type { AggregatedReplayStats, ChartBundle, Position } from "../types";
+
+function statsDirFromOutputRoot(root: string): string {
+  const base = root.replace(/[/\\]+$/, "");
+  const sep = root.includes("/") && !root.includes("\\") ? "/" : "\\";
+  return `${base}${sep}stats`;
+}
 
 const POSITIONS: Position[] = [
   "TOP",
@@ -43,7 +50,12 @@ const POSITIONS: Position[] = [
   "UNKNOWN",
 ];
 
-export function StatsViewerPage() {
+type Props = {
+  /** When true, sync stats dir from saved output root. */
+  active?: boolean;
+};
+
+export function StatsViewerPage({ active = true }: Props) {
   const [directory, setDirectory] = useState("");
   const [aggregated, setAggregated] = useState<AggregatedReplayStats | null>(
     null,
@@ -57,24 +69,31 @@ export function StatsViewerPage() {
     loadHiddenPlayers(),
   );
 
+  const syncDirectoryFromPrefs = useCallback(async () => {
+    const p = await getUiPreferences();
+    if (p.last_output_root) {
+      setDirectory(statsDirFromOutputRoot(p.last_output_root));
+      return;
+    }
+    if (p.last_events_dir) {
+      setDirectory(p.last_events_dir);
+    }
+  }, []);
+
   useEffect(() => {
-    getUiPreferences()
-      .then((p) => {
-        if (p.last_output_root) {
-          const base = p.last_output_root.replace(/[/\\]+$/, "");
-          const sep =
-            p.last_output_root.includes("/") && !p.last_output_root.includes("\\")
-              ? "/"
-              : "\\";
-          setDirectory(`${base}${sep}stats`);
-        } else if (p.last_events_dir) {
-          setDirectory(p.last_events_dir);
-        }
-      })
-      .catch(() => {
+    if (!active) return;
+    void syncDirectoryFromPrefs().catch(() => {
+      /* optional */
+    });
+  }, [active, syncDirectoryFromPrefs]);
+
+  useEffect(() => {
+    return subscribeOutputRootChanged(() => {
+      void syncDirectoryFromPrefs().catch(() => {
         /* optional */
       });
-  }, []);
+    });
+  }, [syncDirectoryFromPrefs]);
 
   const rebuildCharts = useCallback(async (agg: AggregatedReplayStats) => {
     const charts = await buildCharts(agg);
@@ -260,7 +279,7 @@ export function StatsViewerPage() {
         <div className="row">
           <input
             className="text-input grow"
-            placeholder="stats フォルダ"
+            placeholder="出力ベース\\stats"
             value={directory}
             onChange={(e) => setDirectory(e.target.value)}
           />
@@ -272,6 +291,7 @@ export function StatsViewerPage() {
             {busy ? "集計中…" : "集計"}
           </button>
         </div>
+        <p className="hint">自動切り分けの出力ベースを設定すると「出力ベース\stats」に追従します</p>
         <div className="row actions">
           <input
             type="file"
