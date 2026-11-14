@@ -83,7 +83,7 @@ export type RoflOverview = {
   path: string;
   filename: string;
   match_id?: string | null;
-  match_id_source?: "meta" | "meta_fingerprint" | "filename" | null;
+  match_id_source?: "meta" | "meta_fingerprint" | "filename" | "db" | null;
   format?: string | null;
   game_version?: string | null;
   game_length_ms?: number | null;
@@ -136,6 +136,8 @@ export type LocalReplayItem = {
   path: string;
   filename: string;
   match_id: string | null;
+  /** Preferred game id from replace DB (survives local rename). */
+  original_match_id?: string | null;
   size_bytes: number;
 };
 

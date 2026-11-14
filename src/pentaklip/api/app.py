@@ -201,18 +201,28 @@ def api_list_local_replays(directory: str | None = None) -> LocalReplaysResponse
         # Fall back to LoL default when remembered path is missing.
         resolved = default_directory
     items = list_local_replays(resolved)
-    return LocalReplaysResponse(
-        directory=str(resolved),
-        default_directory=str(default_directory),
-        items=[
+    db = get_database()
+    payload: list[LocalReplayItem] = []
+    for item in items:
+        original: str | None = None
+        row = db.find_replay_by_installed_path(item.path)
+        if row is None and item.match_id:
+            row = db.find_replay_by_local_id(item.match_id)
+        if row and row.get("original_match_id"):
+            original = str(row["original_match_id"])
+        payload.append(
             LocalReplayItem(
                 path=str(item.path),
                 filename=item.filename,
                 match_id=item.match_id,
+                original_match_id=original,
                 size_bytes=item.size_bytes,
             )
-            for item in items
-        ],
+        )
+    return LocalReplaysResponse(
+        directory=str(resolved),
+        default_directory=str(default_directory),
+        items=payload,
     )
 
 
@@ -575,11 +585,26 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
 @app.get("/api/replays/inspect", response_model=RoflOverview)
 def api_inspect_rofl(path: str) -> RoflOverview:
     try:
-        return inspect_rofl(Path(path))
+        overview = inspect_rofl(Path(path))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # After replace/copy the on-disk name is the local id; prefer DB original.
+    gid, src = game_id_from_rofl_path(path, db=get_database())
+    if gid and src == "db":
+        note = f"置き換え記録の元ゲーム ID · {gid}"
+        if overview.note:
+            note = f"{note} / {overview.note}"
+        return overview.model_copy(
+            update={
+                "match_id": gid,
+                "match_id_source": "db",
+                "note": note,
+            }
+        )
+    return overview
 
 
 def _ui_preferences_response(prefs: UiPreferences) -> UiPreferencesModel:

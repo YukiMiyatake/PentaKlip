@@ -191,6 +191,35 @@ export function ReplacePage() {
     }
   }
 
+  async function onReloadReplaysDir() {
+    setBusy(true);
+    setError(null);
+    try {
+      const listed = await loadLocalReplays(replaysDir.trim() || null);
+      const remembered = prefs?.fixed_target_rofl || targetPath;
+      const match = findRememberedTarget(listed.items, remembered);
+      if (match) {
+        setTargetPath(match.path);
+        try {
+          setTargetOverview(await inspectRofl(match.path));
+        } catch {
+          setTargetOverview(null);
+        }
+        await rememberPrefs({
+          last_replays_dir: listed.directory,
+          fixed_target_rofl: match.path,
+        });
+      } else {
+        await rememberPrefs({ last_replays_dir: listed.directory });
+      }
+      setMessage(`再読込 · ${listed.items.length} 件`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onLoadSourceDir() {
     if (!sourceDir.trim()) return;
     setBusy(true);
@@ -200,6 +229,9 @@ export function ReplacePage() {
       setEntries(listed.entries);
       setSourceDir(listed.directory);
       await rememberPrefs({ last_source_dir: listed.directory });
+      setMessage(
+        `再読込 · ${listed.entries.filter((e) => !e.is_dir).length} 件`,
+      );
     } catch (err) {
       setError(String(err));
     } finally {
@@ -291,6 +323,9 @@ export function ReplacePage() {
             >
               既定に戻す
             </button>
+            <button className="btn" disabled={busy} onClick={onReloadReplaysDir}>
+              再読込
+            </button>
           </div>
           <label className="field-label">.rofl</label>
           <select
@@ -352,7 +387,7 @@ export function ReplacePage() {
               参照…
             </button>
             <button className="btn" disabled={busy} onClick={onLoadSourceDir}>
-              一覧
+              再読込
             </button>
           </div>
           <div className="file-list">
