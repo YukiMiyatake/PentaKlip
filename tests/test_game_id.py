@@ -8,7 +8,7 @@ from pentaklip.api.app import app
 from pentaklip.game_id import resolve_output_game_id
 
 
-def test_resolve_output_uses_latest_replace_original(tmp_path: Path) -> None:
+def test_insert_replay_keeps_only_latest_per_local_slot(tmp_path: Path) -> None:
     db_path = tmp_path / "pentaklip.sqlite3"
     db = db_mod.Database(db_path)
     db.initialize()
@@ -27,9 +27,11 @@ def test_resolve_output_uses_latest_replace_original(tmp_path: Path) -> None:
         installed_path=str(installed),
     )
 
-    # Stale UI / prefs still holding the previous original must upgrade.
+    rows = db.list_replays()
+    assert len(rows) == 1
+    assert rows[0]["original_match_id"] == "KR-222222222"
+
     gid, src = resolve_output_game_id(
-        "KR-111111111",
         "JP1-111",
         rofl_path=installed,
         db=db,
@@ -37,32 +39,9 @@ def test_resolve_output_uses_latest_replace_original(tmp_path: Path) -> None:
     assert gid == "KR-222222222"
     assert src == "db"
 
-    gid2, _ = resolve_output_game_id(
-        "JP1-111",
-        rofl_path=installed,
-        db=db,
-    )
-    assert gid2 == "KR-222222222"
 
-
-def test_resolve_output_keeps_unrelated_explicit_id(tmp_path: Path) -> None:
-    db_path = tmp_path / "pentaklip.sqlite3"
-    db = db_mod.Database(db_path)
-    db.initialize()
-    installed = tmp_path / "JP1-111.rofl"
-    installed.write_bytes(b"x")
-    db.insert_replay(
-        original_match_id="KR-999888777",
-        original_filename="KR-999888777.rofl",
-        local_replay_id="JP1-111",
-        installed_path=str(installed),
-    )
-
-    gid, src = resolve_output_game_id(
-        "JP1-777",
-        rofl_path=installed,
-        db=db,
-    )
+def test_resolve_output_without_rofl_keeps_explicit_id(tmp_path: Path) -> None:
+    gid, src = resolve_output_game_id("JP1-777", rofl_path=None, db=None)
     assert gid == "JP1-777"
     assert src == "candidate"
 
@@ -106,7 +85,6 @@ def test_auto_split_after_second_replace_uses_latest_original(
     installed.write_bytes(b"rofl")
 
     client = TestClient(app)
-    # First replace
     src1 = tmp_path / "KR-111111111.rofl"
     src1.write_bytes(b"a")
     assert (
@@ -122,7 +100,6 @@ def test_auto_split_after_second_replace_uses_latest_original(
         ).status_code
         == 200
     )
-    # Second replace on the same local slot
     src2 = tmp_path / "KR-222222222.rofl"
     src2.write_bytes(b"b")
     installed2 = client.post(
@@ -137,6 +114,8 @@ def test_auto_split_after_second_replace_uses_latest_original(
     )
     assert installed2.status_code == 200, installed2.text
     assert installed2.json()["original_match_id"] == "KR-222222222"
+
+    assert len(client.get("/api/replays").json()) == 1
 
     listed = client.get("/api/replays/local", params={"directory": str(replays)}).json()
     assert listed["items"][0]["original_match_id"] == "KR-222222222"
@@ -154,7 +133,7 @@ def test_auto_split_after_second_replace_uses_latest_original(
         json.dumps(
             {
                 "Events": [{"EventName": "ChampionKill", "EventTime": 30.0}],
-                "meta": {"game_id": "KR-111111111"},  # stale prior original
+                "meta": {"game_id": "JP1-111"},
             }
         ),
         encoding="utf-8",
@@ -162,7 +141,6 @@ def test_auto_split_after_second_replace_uses_latest_original(
     out_root = tmp_path / "out"
     prefs = client.get("/api/ui/preferences").json()
     prefs["last_output_root"] = str(out_root)
-    prefs["last_game_id"] = "KR-111111111"  # stale prefs
     assert client.put("/api/ui/preferences", json=prefs).status_code == 200
 
     response = client.post(
@@ -170,7 +148,7 @@ def test_auto_split_after_second_replace_uses_latest_original(
         json={
             "source_video_path": str(video),
             "events_path": str(events_path),
-            "original_match_id": "KR-111111111",
+            "original_match_id": "JP1-111",
             "dry_run": True,
             "padding_before_sec": 5,
             "padding_after_sec": 5,
@@ -205,7 +183,6 @@ def test_auto_split_prefixes_use_replace_original(tmp_path: Path, monkeypatch) -
 
     video = tmp_path / "JP1-111_full.mp4"
     video.write_bytes(b"video")
-    # Events may still carry the local id from an older export.
     events = {
         "Events": [{"EventName": "ChampionKill", "EventTime": 30.0}],
         "meta": {"game_id": "JP1-111"},

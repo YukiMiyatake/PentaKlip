@@ -77,27 +77,6 @@ def _replay_row_for_rofl(
     return None
 
 
-def _replace_history_for_rofl(
-    rofl_path: str | Path | None, db: Database | None
-) -> tuple[dict[str, Any] | None, set[str]]:
-    """Latest replace row plus every prior original_match_id for that local slot."""
-    latest = _replay_row_for_rofl(rofl_path, db)
-    if latest is None or db is None:
-        return latest, set()
-    local_id = str(latest.get("local_replay_id") or "") or None
-    if not local_id:
-        local_id = parse_match_id_from_filename(rofl_path) if rofl_path else None
-    history: set[str] = set()
-    if local_id:
-        for row in db.list_replays_for_local_id(local_id):
-            oid = row.get("original_match_id")
-            if oid:
-                history.add(str(oid))
-    elif latest.get("original_match_id"):
-        history.add(str(latest["original_match_id"]))
-    return latest, history
-
-
 def resolve_output_game_id(
     *candidates: str | Path | None,
     rofl_path: str | Path | None = None,
@@ -106,23 +85,20 @@ def resolve_output_game_id(
     """
     Resolve the game id used for Event / Replay / stats / Clip prefixes.
 
-    After replace-copy the on-disk ``.rofl`` name is the *local* id. The same
-    local slot may be overwritten many times; always prefer the **latest**
-    install row's ``original_match_id``. Candidates that equal the local id or
-    any prior original for that slot are rewritten to the latest original.
-    Unrelated explicit game ids (other matches) are left unchanged.
+    After replace-copy the on-disk ``.rofl`` name is the *local* id. DB keeps a
+    single current mapping per local slot (no history). When ``rofl_path`` has a
+    replace row, that row's ``original_match_id`` is used. Otherwise fall back to
+    candidates / ROFL meta / filename.
     """
-    latest, history_originals = _replace_history_for_rofl(rofl_path, db)
-    original: str | None = None
-    local_id: str | None = None
-    if latest:
-        if latest.get("original_match_id"):
-            original = str(latest["original_match_id"])
-        if latest.get("local_replay_id"):
-            local_id = str(latest["local_replay_id"])
+    latest = _replay_row_for_rofl(rofl_path, db)
+    if latest and latest.get("original_match_id"):
+        return str(latest["original_match_id"]), "db"
 
-    remapped: list[str | Path | None] = []
-    saw_slot_id = False
+    local_id = None
+    if latest and latest.get("local_replay_id"):
+        local_id = str(latest["local_replay_id"])
+
+    filtered: list[str | Path | None] = []
     for candidate in candidates:
         if candidate is None:
             continue
@@ -130,30 +106,13 @@ def resolve_output_game_id(
         if not text:
             continue
         as_id = look_like_game_id(text) or parse_match_id_from_filename(Path(text))
-        if as_id and original and (
-            (local_id and as_id.lower() == local_id.lower())
-            or as_id in history_originals
-            or as_id.lower() in {h.lower() for h in history_originals}
-        ):
-            saw_slot_id = True
-            remapped.append(original)
+        if local_id and as_id and as_id.lower() == local_id.lower():
             continue
-        remapped.append(candidate)
+        filtered.append(candidate)
 
-    found = infer_game_id(*remapped)
+    found = infer_game_id(*filtered)
     if found:
-        if local_id and original and found.lower() == local_id.lower():
-            return original, "db"
-        if original and found.lower() == original.lower():
-            return original, "db" if saw_slot_id else "candidate"
-        if original and found in history_originals:
-            return original, "db"
-        if original and found.lower() in {h.lower() for h in history_originals}:
-            return original, "db"
         return found, "candidate"
-
-    if original:
-        return original, "db"
 
     rofl_id, rofl_src = game_id_from_rofl_path(rofl_path, db=db)
     if rofl_id:
