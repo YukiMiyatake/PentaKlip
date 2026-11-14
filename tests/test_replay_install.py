@@ -116,9 +116,9 @@ def test_install_prefers_rofl_meta_game_id(tmp_path: Path) -> None:
 def test_api_inspect_prefers_replace_db_original(tmp_path: Path, monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
+    import pentaklip.store.db as db_mod
     from pentaklip import config
     from pentaklip.api.app import app
-    import pentaklip.store.db as db_mod
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
