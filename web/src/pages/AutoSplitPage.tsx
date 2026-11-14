@@ -12,6 +12,7 @@ import {
   patchUiPreferences,
   pickDirectory,
 } from "../api";
+import { notifyOutputRootChanged } from "../sync";
 import type {
   CreateClipsResponse,
   EventsLiveStatus,
@@ -230,6 +231,7 @@ export function AutoSplitPage({ active = true }: Props) {
         last_output_root: trimmed,
         last_events_dir: eventDir,
       });
+      notifyOutputRootChanged();
       setPrefsSavedNote("出力を保存しました");
     }
   }
@@ -438,6 +440,7 @@ export function AutoSplitPage({ active = true }: Props) {
         last_output_root: root,
         last_game_id: response.game_id,
       });
+      notifyOutputRootChanged();
       await refreshMatchedFiles(response.game_id, root);
     } catch (err) {
       setError(String(err));

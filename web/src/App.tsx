@@ -69,7 +69,7 @@ export default function App() {
         <ToolsPage active={tab === "tools"} />
       </div>
       <div className="tab-panel" hidden={tab !== "viewer"}>
-        <StatsViewerPage />
+        <StatsViewerPage active={tab === "viewer"} />
       </div>
       <div className="tab-panel" hidden={tab !== "settings"}>
         <DisplaySettingsPage />

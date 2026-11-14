@@ -4,10 +4,12 @@ const CHANNEL = "pentaklip-sync";
 
 export const DISPLAY_SETTINGS_CHANGED = "pentaklip:display-settings-changed";
 export const VIEW_FILTERS_CHANGED = "pentaklip:view-filters-changed";
+export const OUTPUT_ROOT_CHANGED = "pentaklip:output-root-changed";
 
 type SyncPayload =
   | { type: typeof DISPLAY_SETTINGS_CHANGED }
-  | { type: typeof VIEW_FILTERS_CHANGED };
+  | { type: typeof VIEW_FILTERS_CHANGED }
+  | { type: typeof OUTPUT_ROOT_CHANGED };
 
 function post(payload: SyncPayload) {
   try {
@@ -27,6 +29,11 @@ export function notifyDisplaySettingsChanged() {
 export function notifyViewFiltersChanged() {
   window.dispatchEvent(new Event(VIEW_FILTERS_CHANGED));
   post({ type: VIEW_FILTERS_CHANGED });
+}
+
+export function notifyOutputRootChanged() {
+  window.dispatchEvent(new Event(OUTPUT_ROOT_CHANGED));
+  post({ type: OUTPUT_ROOT_CHANGED });
 }
 
 function subscribe(
@@ -57,4 +64,8 @@ export function subscribeDisplaySettingsChanged(cb: () => void): () => void {
 
 export function subscribeViewFiltersChanged(cb: () => void): () => void {
   return subscribe(VIEW_FILTERS_CHANGED, VIEW_FILTERS_CHANGED, cb);
+}
+
+export function subscribeOutputRootChanged(cb: () => void): () => void {
+  return subscribe(OUTPUT_ROOT_CHANGED, OUTPUT_ROOT_CHANGED, cb);
 }
