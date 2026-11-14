@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
+import { LaneFilterBar } from "../components/LaneFilterBar";
 import { RadarStatChart } from "../components/RadarStatChart";
 import {
   filterChartsByLane,
   loadLaneFilter,
   normalizeLaneFilter,
+  saveLaneFilter,
   type LaneFilter,
 } from "../lanes";
 import {
@@ -13,6 +15,7 @@ import {
   parseHiddenParam,
 } from "../playerVisibility";
 import {
+  notifyViewFiltersChanged,
   subscribeDisplaySettingsChanged,
   subscribeViewFiltersChanged,
 } from "../sync";
@@ -35,8 +38,8 @@ function resolveHidden(q: URLSearchParams): Set<string> {
 }
 
 /**
- * Display-only OBS Browser Source. Lane / player filters are controlled from
- * the Stats tab (or URL query written by that tab). No interactive controls.
+ * OBS Browser Source overlay. Lane filter can be set here or from the Stats
+ * tab / URL `position` query (kept in sync via localStorage + BroadcastChannel).
  */
 export function ObsOverlayPage() {
   const q = useMemo(() => params(), []);
@@ -60,11 +63,28 @@ export function ObsOverlayPage() {
     return filterChartsByPlayerVisibility(byLane, hiddenPlayers);
   }, [allRadars, laneFilter, hiddenPlayers]);
 
+  const applyLaneToUrl = useCallback((next: LaneFilter) => {
+    const u = new URL(window.location.href);
+    if (next === "ALL") u.searchParams.delete("position");
+    else u.searchParams.set("position", next);
+    window.history.replaceState({}, "", u);
+  }, []);
+
   const syncFiltersFromStorage = useCallback(() => {
     const latest = params();
-    setLaneFilter(resolveLane(latest));
+    // Prefer persisted filter so Stats ↔ OBS stay aligned after either side changes.
+    const lane = loadLaneFilter();
+    setLaneFilter(lane);
+    applyLaneToUrl(lane);
     setHiddenPlayers(resolveHidden(latest));
-  }, []);
+  }, [applyLaneToUrl]);
+
+  function onLaneChange(next: LaneFilter) {
+    setLaneFilter(next);
+    saveLaneFilter(next);
+    applyLaneToUrl(next);
+    notifyViewFiltersChanged();
+  }
 
   const load = useCallback(async (dir: string) => {
     if (!dir.trim()) {
@@ -179,12 +199,16 @@ export function ObsOverlayPage() {
 
   return (
     <div className="obs-root">
-      <div className="obs-toolbar obs-toolbar-readonly" aria-hidden="true">
+      <div className="obs-toolbar">
         <span className="mono">OBS · radar</span>
+        <LaneFilterBar
+          value={laneFilter}
+          onChange={onLaneChange}
+          compact
+        />
         {meta ? (
-          <span>
+          <span className="obs-toolbar-meta">
             {meta}
-            {laneFilter !== "ALL" ? ` · ${laneFilter}` : ""}
             {playerFilter ? ` · player ${playerFilter}` : ""}
             {hiddenPlayers.size > 0 ? ` · hide ${hiddenPlayers.size}` : ""}
             {` · show ${radars.length}`}
