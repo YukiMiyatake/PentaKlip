@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Legend,
   PolarAngleAxis,
@@ -8,23 +9,40 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
+import {
+  RADAR_THRESHOLD_DEFAULT,
+  radarNormsForThreshold,
+} from "../radarScale";
 import type { ChartSpec } from "../types";
 
 type Props = {
   chart: ChartSpec;
   compact?: boolean;
+  /** Display window around baseline as ±N%. Smaller → more contrast. */
+  thresholdPct?: number;
 };
 
-export function RadarStatChart({ chart, compact = false }: Props) {
+export function RadarStatChart({
+  chart,
+  compact = false,
+  thresholdPct = RADAR_THRESHOLD_DEFAULT,
+}: Props) {
   const player = chart.series.find((s) => s.key === "player") ?? chart.series[0];
   const baseline = chart.series.find((s) => s.key === "baseline") ?? chart.series[1];
-  const data = chart.rows.map((row) => ({
-    axis: String(row.axis ?? row.stat_key ?? ""),
-    player_norm: Number(row.player_norm ?? 0),
-    baseline_norm: Number(row.baseline_norm ?? 0),
-    player: row.player,
-    baseline: row.baseline,
-  }));
+  const data = useMemo(
+    () =>
+      chart.rows.map((row) => {
+        const norms = radarNormsForThreshold(row, thresholdPct);
+        return {
+          axis: String(row.axis ?? row.stat_key ?? ""),
+          player_norm: norms.player_norm,
+          baseline_norm: norms.baseline_norm,
+          player: row.player,
+          baseline: row.baseline,
+        };
+      }),
+    [chart.rows, thresholdPct],
+  );
 
   const height = compact ? 260 : 320;
 
@@ -34,6 +52,7 @@ export function RadarStatChart({ chart, compact = false }: Props) {
       <p className="radar-legend-hint">
         <span className="radar-swatch fill" /> {player?.label ?? "Player"}
         <span className="radar-swatch dash" /> {baseline?.label ?? "Baseline"}
+        <span className="radar-scale-tag mono">±{thresholdPct}%</span>
       </p>
       <ResponsiveContainer width="100%" height={height}>
         <RadarChart data={data} cx="50%" cy="52%" outerRadius="72%">
@@ -42,11 +61,7 @@ export function RadarStatChart({ chart, compact = false }: Props) {
             dataKey="axis"
             tick={{ fill: "#c5d4cb", fontSize: compact ? 11 : 12 }}
           />
-          <PolarRadiusAxis
-            domain={[0, 1]}
-            tick={false}
-            axisLine={false}
-          />
+          <PolarRadiusAxis domain={[0, 1]} tick={false} axisLine={false} />
           <Tooltip
             contentStyle={{
               background: "#171e1b",

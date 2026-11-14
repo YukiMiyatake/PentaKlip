@@ -711,6 +711,66 @@ table.stats th {
   border: 1px dashed #7ec8ff;
 }
 
+.radar-scale-tag {
+  margin-left: auto;
+  opacity: 0.75;
+  font-size: 0.78rem;
+}
+
+.section-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 8px;
+  grid-column: 1 / -1;
+}
+
+.section-title-row .section-title {
+  margin: 0;
+}
+
+.radar-threshold {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: min(100%, 320px);
+}
+
+.radar-threshold-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.radar-threshold input[type="range"] {
+  flex: 1 1 140px;
+  min-width: 120px;
+  accent-color: var(--accent, #b7f255);
+}
+
+.radar-threshold-hint {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.radar-threshold.compact {
+  min-width: 180px;
+  gap: 6px 10px;
+}
+
+.radar-threshold.compact .radar-threshold-label {
+  font-size: 0.75rem;
+}
+
+.radar-threshold.compact input[type="range"] {
+  min-width: 100px;
+  flex-basis: 100px;
+}
+
 .lane-filter-row {
   display: flex;
   flex-wrap: wrap;

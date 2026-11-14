@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneFilterBar } from "../components/LaneFilterBar";
 import { RadarStatChart } from "../components/RadarStatChart";
+import { RadarThresholdControl } from "../components/RadarThresholdControl";
 import {
   filterChartsByLane,
   loadLaneFilter,
@@ -14,6 +15,12 @@ import {
   loadHiddenPlayers,
   parseHiddenParam,
 } from "../playerVisibility";
+import {
+  RADAR_THRESHOLD_DEFAULT,
+  loadRadarThresholdPct,
+  normalizeRadarThresholdPct,
+  saveRadarThresholdPct,
+} from "../radarScale";
 import {
   notifyViewFiltersChanged,
   subscribeDisplaySettingsChanged,
@@ -37,6 +44,14 @@ function resolveHidden(q: URLSearchParams): Set<string> {
   return loadHiddenPlayers();
 }
 
+function resolveThreshold(q: URLSearchParams): number {
+  const fromUrl = q.get("span") ?? q.get("threshold");
+  if (fromUrl != null && fromUrl !== "") {
+    return normalizeRadarThresholdPct(fromUrl);
+  }
+  return loadRadarThresholdPct();
+}
+
 /**
  * OBS Browser Source overlay. Lane filter can be set here or from the Stats
  * tab / URL `position` query (kept in sync via localStorage + BroadcastChannel).
@@ -53,6 +68,9 @@ export function ObsOverlayPage() {
   const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
     resolveHidden(q),
   );
+  const [radarThresholdPct, setRadarThresholdPct] = useState(() =>
+    resolveThreshold(q),
+  );
   const [allRadars, setAllRadars] = useState<ChartSpec[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
@@ -63,26 +81,41 @@ export function ObsOverlayPage() {
     return filterChartsByPlayerVisibility(byLane, hiddenPlayers);
   }, [allRadars, laneFilter, hiddenPlayers]);
 
-  const applyLaneToUrl = useCallback((next: LaneFilter) => {
-    const u = new URL(window.location.href);
-    if (next === "ALL") u.searchParams.delete("position");
-    else u.searchParams.set("position", next);
-    window.history.replaceState({}, "", u);
-  }, []);
+  const applyFiltersToUrl = useCallback(
+    (lane: LaneFilter, threshold: number) => {
+      const u = new URL(window.location.href);
+      if (lane === "ALL") u.searchParams.delete("position");
+      else u.searchParams.set("position", lane);
+      if (threshold === RADAR_THRESHOLD_DEFAULT) u.searchParams.delete("span");
+      else u.searchParams.set("span", String(threshold));
+      u.searchParams.delete("threshold");
+      window.history.replaceState({}, "", u);
+    },
+    [],
+  );
 
   const syncFiltersFromStorage = useCallback(() => {
     const latest = params();
-    // Prefer persisted filter so Stats ↔ OBS stay aligned after either side changes.
+    // Prefer persisted filters so Stats ↔ OBS stay aligned after either side changes.
     const lane = loadLaneFilter();
+    const threshold = loadRadarThresholdPct();
     setLaneFilter(lane);
-    applyLaneToUrl(lane);
+    setRadarThresholdPct(threshold);
+    applyFiltersToUrl(lane, threshold);
     setHiddenPlayers(resolveHidden(latest));
-  }, [applyLaneToUrl]);
+  }, [applyFiltersToUrl]);
 
   function onLaneChange(next: LaneFilter) {
     setLaneFilter(next);
     saveLaneFilter(next);
-    applyLaneToUrl(next);
+    applyFiltersToUrl(next, radarThresholdPct);
+    notifyViewFiltersChanged();
+  }
+
+  function onRadarThresholdChange(next: number) {
+    setRadarThresholdPct(next);
+    saveRadarThresholdPct(next);
+    applyFiltersToUrl(laneFilter, next);
     notifyViewFiltersChanged();
   }
 
@@ -169,7 +202,8 @@ export function ObsOverlayPage() {
     const onStorage = (ev: StorageEvent) => {
       if (
         ev.key === "pentaklip.hiddenPlayerStats" ||
-        ev.key === "pentaklip.laneFilter"
+        ev.key === "pentaklip.laneFilter" ||
+        ev.key === "pentaklip.radarThresholdPct"
       ) {
         syncFiltersFromStorage();
       }
@@ -206,6 +240,11 @@ export function ObsOverlayPage() {
           onChange={onLaneChange}
           compact
         />
+        <RadarThresholdControl
+          value={radarThresholdPct}
+          onChange={onRadarThresholdChange}
+          compact
+        />
         {meta ? (
           <span className="obs-toolbar-meta">
             {meta}
@@ -219,7 +258,12 @@ export function ObsOverlayPage() {
       {error ? <p className="error obs-error">{error}</p> : null}
       <div className="obs-radar-grid">
         {radars.map((chart) => (
-          <RadarStatChart key={chart.chart_id} chart={chart} compact />
+          <RadarStatChart
+            key={chart.chart_id}
+            chart={chart}
+            compact
+            thresholdPct={radarThresholdPct}
+          />
         ))}
       </div>
       {!busy && radars.length === 0 && !error ? (
