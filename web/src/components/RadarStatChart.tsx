@@ -52,7 +52,7 @@ export function RadarStatChart({
       <p className="radar-legend-hint">
         <span className="radar-swatch fill" /> {player?.label ?? "Player"}
         <span className="radar-swatch dash" /> {baseline?.label ?? "Baseline"}
-        <span className="radar-scale-tag mono">±{thresholdPct}%</span>
+        <span className="radar-scale-tag mono">{thresholdPct}%</span>
       </p>
       <ResponsiveContainer width="100%" height={height}>
         <RadarChart data={data} cx="50%" cy="52%" outerRadius="72%">

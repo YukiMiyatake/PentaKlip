@@ -23,7 +23,7 @@ export function RadarThresholdControl({
     >
       <span className="radar-threshold-label">
         スレッショルド
-        <span className="mono"> ±{value}%</span>
+        <span className="mono"> {value}%</span>
       </span>
       <input
         type="range"
@@ -31,12 +31,13 @@ export function RadarThresholdControl({
         max={RADAR_THRESHOLD_MAX}
         step={RADAR_THRESHOLD_STEP}
         value={value}
-        aria-label="レーダースレッショルド（平均からの表示レンジ）"
+        aria-label="レーダースレッショルド（最大値の上側何％を表示するか）"
         onChange={(e) => onChange(Number(e.target.value))}
       />
       {!compact ? (
         <span className="hint radar-threshold-hint">
-          平均±N%をチャート全体に拡大（小さいほど差が見やすい）
+          最大値の上側 N% をチャート全体に拡大（小さいほど差が見やすい / 100%
+          で従来スケール）
         </span>
       ) : null}
     </label>
