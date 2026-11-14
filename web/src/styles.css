@@ -870,8 +870,7 @@ body.obs-overlay #root {
   font-size: 0.8rem;
 }
 
-.obs-toolbar-readonly {
-  pointer-events: none;
+.obs-toolbar-meta {
   opacity: 0.85;
 }
 
