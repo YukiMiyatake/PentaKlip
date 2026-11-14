@@ -50,8 +50,8 @@ from pentaklip.config import settings
 from pentaklip.detect.service import detect_from_events, summarize_event_coverage
 from pentaklip.events.harvest import harvest_events_playthrough
 from pentaklip.events.service import export_events_json, fetch_live_events
-from pentaklip.game_id import game_id_from_rofl_path
-from pentaklip.paths import infer_game_id, resolve_output_layout
+from pentaklip.game_id import game_id_from_rofl_path, resolve_output_game_id
+from pentaklip.paths import resolve_output_layout
 from pentaklip.replay.install import (
     install_replay,
     list_local_replays,
@@ -303,12 +303,12 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
 
     prefs = load_ui_preferences(settings.data_dir)
     db = get_database()
-    rofl_id, _rofl_src = game_id_from_rofl_path(prefs.fixed_target_rofl, db=db)
-    game_id = infer_game_id(
+    game_id, _ = resolve_output_game_id(
         body.original_match_id,
-        rofl_id,
         body.source_video_path,
         prefs.last_game_id,
+        rofl_path=prefs.fixed_target_rofl,
+        db=db,
     )
 
     layout = resolve_output_layout(
@@ -449,14 +449,14 @@ def api_auto_split(body: AutoSplitRequest) -> CreateClipsResponse:
 
     prefs = load_ui_preferences(settings.data_dir)
     db = get_database()
-    rofl_id, _ = game_id_from_rofl_path(prefs.fixed_target_rofl, db=db)
-    game_id = infer_game_id(
+    game_id, _ = resolve_output_game_id(
         body.original_match_id,
         events_meta.get("game_id"),
-        rofl_id,
         events_path.parent if events_path else None,
         body.source_video_path,
         prefs.last_game_id,
+        rofl_path=prefs.fixed_target_rofl,
+        db=db,
     )
 
     output_dir = body.output_dir
@@ -521,17 +521,22 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
         default_root = settings.data_dir / "matches"
     layout = resolve_output_layout(default_root, fallback=default_root)
     db = get_database()
-    rofl_id, _ = game_id_from_rofl_path(prefs.fixed_target_rofl, db=db)
-    game_id = infer_game_id(
+    game_id, _ = resolve_output_game_id(
         body.game_id,
         prefs.last_game_id,
-        rofl_id,
+        rofl_path=prefs.fixed_target_rofl,
+        db=db,
     )
     try:
         if game_id is None and body.output_path is None:
             # Last chance: Live Client payload may include a game id.
             live, _ = fetch_live_events()
-            game_id = live.game_id
+            live_id, _ = resolve_output_game_id(
+                live.game_id,
+                rofl_path=prefs.fixed_target_rofl,
+                db=db,
+            )
+            game_id = live_id or live.game_id
         if game_id is None and body.output_path is None:
             raise HTTPException(
                 status_code=400,

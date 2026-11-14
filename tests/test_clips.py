@@ -140,7 +140,15 @@ def test_clips_api_dry_run(tmp_path: Path) -> None:
     assert body["clips"][0]["start_sec"] == 5
 
 
-def test_auto_split_uses_clip_game_id_folder(tmp_path: Path) -> None:
+def test_auto_split_uses_clip_game_id_folder(tmp_path: Path, monkeypatch) -> None:
+    import pentaklip.store.db as db_mod
+    from pentaklip import config
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setattr(config.settings, "data_dir", data_dir)
+    monkeypatch.setattr(db_mod, "_db", None)
+
     video = tmp_path / "rec_JP1-777.mp4"
     video.write_bytes(b"video")
     events = {
@@ -155,6 +163,8 @@ def test_auto_split_uses_clip_game_id_folder(tmp_path: Path) -> None:
     client = TestClient(app)
     prefs = client.get("/api/ui/preferences").json()
     prefs["last_output_root"] = str(out_root)
+    prefs["fixed_target_rofl"] = None
+    prefs["last_game_id"] = None
     assert client.put("/api/ui/preferences", json=prefs).status_code == 200
 
     response = client.post(

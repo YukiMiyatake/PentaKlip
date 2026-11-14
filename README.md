@@ -133,11 +133,13 @@ npm run build
 `.webm` は切り分け実行時に `{出力ベース}/Replay/` へ MP4 変換してからカットします（変換済みがあれば再利用）。
 
 1. WebUI「ffmpeg」タブで導入 / PATH 追加
-2. 「自動切り分け」タブで **出力ベース** を設定（配下に `Event` / `Replay` / `stats` / `Clip` を自動作成）。ゲームIDは次の優先順で自動取得:
+2. 「自動切り分け」タブで **出力ベース** を設定（配下に `Event` / `Replay` / `stats` / `Clip` を自動作成）。ゲームID（Event / Replay / stats / Clip のプリフィックス）は次の優先順:
+   - 明示 ID / イベント JSON の game_id（ただし置き換え後の**ローカル名**なら DB の**コピー前の元マッチID**へ置換）
    - 置き換え時に保存した **元マッチID**（DB）
    - ROFL メタの gameId（あれば）
    - ROFL メタ指紋 `rofl-…`（リネームしても不変）
    - ファイル名（最終手段）
+   - 画面上の ROFL 表示はローカル名のまま。出力だけコピー前 ID を使う
 3. リプレイを開いた状態で **試合を走査して取得** → JSON 保存
    （Replay API で先頭から高速再生し、Live Client イベントを蓄積。終端 Seek だけでは序盤が欠ける）
    → `game.cfg` の `[General]` に `EnableReplayApi=1` が必要

@@ -36,10 +36,27 @@ function matchesGameId(name: string, gameId: string): boolean {
   return Boolean(digits && digits.length >= 6 && lower.includes(digits));
 }
 
-function pickBestEvent(files: FsEntry[], gameId: string): FsEntry | null {
+/** Match by output (pre-copy) id and/or local ROFL filename id. */
+function matchesAnyGameId(
+  name: string,
+  outputGameId: string,
+  localGameId?: string | null,
+): boolean {
+  if (matchesGameId(name, outputGameId)) return true;
+  if (localGameId && localGameId !== outputGameId && matchesGameId(name, localGameId)) {
+    return true;
+  }
+  return false;
+}
+
+function pickBestEvent(
+  files: FsEntry[],
+  gameId: string,
+  localGameId?: string | null,
+): FsEntry | null {
   const gid = gameId.trim().toLowerCase();
   if (!gid) return null;
-  const matches = files.filter((f) => matchesGameId(f.name, gid));
+  const matches = files.filter((f) => matchesAnyGameId(f.name, gid, localGameId));
   if (matches.length) {
     const exact = matches.find((f) => f.name.toLowerCase() === `${gid}_events.json`);
     if (exact) return exact;
@@ -55,17 +72,20 @@ function pickBestVideo(
   highlights: FsEntry[],
   replayVideos: FsEntry[],
   gameId: string,
+  localGameId?: string | null,
 ): { path: string; label: string; source: "replay" | "highlights" } | null {
   const gid = gameId.trim();
   if (!gid) return null;
-  const replayMatches = replayVideos.filter((f) => matchesGameId(f.name, gid));
+  const replayMatches = replayVideos.filter((f) =>
+    matchesAnyGameId(f.name, gid, localGameId),
+  );
   if (replayMatches.length) {
     const best = [...replayMatches].sort(
       (a, b) => (b.size_bytes ?? 0) - (a.size_bytes ?? 0) || b.name.localeCompare(a.name),
     )[0];
     return { path: best.path, label: best.name, source: "replay" };
   }
-  const hlMatches = highlights.filter((f) => matchesGameId(f.name, gid));
+  const hlMatches = highlights.filter((f) => matchesAnyGameId(f.name, gid, localGameId));
   if (!hlMatches.length) return null;
   const best = [...hlMatches].sort(
     (a, b) => (b.size_bytes ?? 0) - (a.size_bytes ?? 0) || b.name.localeCompare(a.name),
@@ -77,6 +97,8 @@ export function AutoSplitPage() {
   const [prefs, setPrefs] = useState<UiPreferences | null>(null);
   const [outputRoot, setOutputRoot] = useState("");
   const [gameId, setGameId] = useState("");
+  /** Local ROFL filename id (post-replace); used only to match Highlights named after the slot. */
+  const [localGameId, setLocalGameId] = useState("");
   const [roflPath, setRoflPath] = useState("");
   const [replays, setReplays] = useState<LocalReplayItem[]>([]);
   const [replaysDir, setReplaysDir] = useState("");
@@ -105,13 +127,15 @@ export function AutoSplitPage() {
     events: FsEntry[],
     hl: FsEntry[],
     replayVids: FsEntry[],
+    localId?: string | null,
   ) {
-    const event = pickBestEvent(events, gid);
+    const local = localId ?? localGameId;
+    const event = pickBestEvent(events, gid, local);
     setEventsPath(event?.path ?? "");
     if (event) {
       setExportNote(`Event ファイルを使用 · ${event.name}`);
     }
-    const video = pickBestVideo(hl, replayVids, gid);
+    const video = pickBestVideo(hl, replayVids, gid, local);
     setVideoPath(video?.path ?? "");
     setVideoSource(video?.source ?? "");
   }
@@ -162,7 +186,12 @@ export function AutoSplitPage() {
     return saved;
   }
 
-  async function refreshMatchedFiles(gid: string, root?: string) {
+  async function refreshMatchedFiles(
+    gid: string,
+    root?: string,
+    localId?: string | null,
+  ) {
+    const local = localId ?? localGameId;
     const base = (root ?? outputRoot).trim();
     const eventDir = base ? joinOsPath(base, "Event") : eventsDir;
     const replayDir = base ? joinOsPath(base, "Replay") : "";
@@ -171,10 +200,10 @@ export function AutoSplitPage() {
       loadHighlights(highlightsDir || null),
       replayDir ? listReplayVideos(replayDir) : Promise.resolve(replayVideos),
     ]);
-    if (gid.trim()) applyResolvedPaths(gid, events, hl, replayVids);
+    if (gid.trim()) applyResolvedPaths(gid, events, hl, replayVids, local);
     return {
-      event: pickBestEvent(events, gid),
-      video: pickBestVideo(hl, replayVids, gid),
+      event: pickBestEvent(events, gid, local),
+      video: pickBestVideo(hl, replayVids, gid, local),
     };
   }
 
@@ -204,26 +233,31 @@ export function AutoSplitPage() {
     setRoflPath(path);
     setError(null);
     setResult(null);
-    // Prefer caller hint (DB original_match_id) over filename local id.
-    let gid = matchId?.trim() || "";
+    const listed = replays.find((r) => r.path === path);
+    const localId = (listed?.match_id || "").trim();
+    // Output prefixes always use pre-copy original when available.
+    let outputId =
+      (listed?.original_match_id || matchId || localId || "").trim();
     try {
       const overview = await inspectRofl(path);
-      // inspect prefers replace-DB original; meta next; filename last.
-      if (overview.match_id) gid = overview.match_id;
+      // inspect overlays replace-DB original onto match_id.
+      if (overview.match_id) outputId = overview.match_id;
     } catch {
-      // filename / original_match_id from list is enough as fallback
+      // list / filename fallback is enough
     }
-    if (!gid) {
+    if (!outputId) {
       await rememberPrefs({ fixed_target_rofl: path });
       setError("この ROFL からゲーム ID を取得できませんでした");
       return;
     }
-    setGameId(gid);
+    const localForMatch = localId && localId !== outputId ? localId : "";
+    setLocalGameId(localForMatch);
+    setGameId(outputId);
     await rememberPrefs({
       fixed_target_rofl: path,
-      last_game_id: gid,
+      last_game_id: outputId,
     });
-    await refreshMatchedFiles(gid);
+    await refreshMatchedFiles(outputId, undefined, localForMatch);
   }
 
   useEffect(() => {
@@ -239,9 +273,14 @@ export function AutoSplitPage() {
           await listEvents(p.last_events_dir);
         }
         const replayList = await loadReplays(p.last_replays_dir ?? null);
+        let localId = "";
         if (p.fixed_target_rofl) {
           const found = replayList.items.find((i) => i.path === p.fixed_target_rofl);
           const preferred = found?.original_match_id || found?.match_id;
+          if (found?.match_id && found.original_match_id && found.match_id !== found.original_match_id) {
+            localId = found.match_id;
+            setLocalGameId(localId);
+          }
           if (preferred && !gid) setGameId(preferred);
         }
         const hl = await loadHighlights(p.last_highlights_dir ?? null);
@@ -253,7 +292,7 @@ export function AutoSplitPage() {
           const replayVids = p.last_output_root
             ? await listReplayVideos(joinOsPath(p.last_output_root, "Replay"))
             : [];
-          applyResolvedPaths(resolvedGid, events, hl, replayVids);
+          applyResolvedPaths(resolvedGid, events, hl, replayVids, localId);
         }
       })
       .catch((err) => setError(String(err)));
@@ -454,7 +493,7 @@ export function AutoSplitPage() {
   const gid = gameId.trim() || "…";
   const base = outputRoot.replace(/[/\\]+$/, "") || "…";
   const hlMatchCount = gameId.trim()
-    ? highlights.filter((f) => matchesGameId(f.name, gameId)).length
+    ? highlights.filter((f) => matchesAnyGameId(f.name, gameId, localGameId)).length
     : 0;
 
   return (
@@ -493,7 +532,10 @@ export function AutoSplitPage() {
         <h3>リプレイ（ROFL）</h3>
         <p className="hint">ROFL を選ぶとゲーム ID から Event / 動画を自動で確定します</p>
         <p className="path-preview mono">{roflPath || replaysDir || "—"}</p>
-        <p className="status-line mono">ゲーム ID · {gid}</p>
+        <p className="status-line mono">
+          出力ゲーム ID · {gid}
+          {localGameId ? ` · ローカル ${localGameId}` : ""}
+        </p>
         <div className="row" style={{ marginBottom: 8 }}>
           <button className="btn" disabled={busy} onClick={() => browseReplays()}>
             Replays 参照…
@@ -508,20 +550,22 @@ export function AutoSplitPage() {
         </div>
         <div className="file-list">
           {replays.map((r) => {
-            const preferredId = r.original_match_id || r.match_id;
+            const outputId = r.original_match_id || r.match_id;
             return (
               <button
                 key={r.path}
                 className={`file-item ${roflPath === r.path ? "active" : ""}`}
-                onClick={() => selectRofl(r.path, preferredId)}
+                onClick={() => selectRofl(r.path, outputId)}
               >
                 {r.filename}
-                {preferredId ? ` · ${preferredId}` : ""}
+                {r.match_id ? ` · ローカル ${r.match_id}` : ""}
                 {r.original_match_id &&
                 r.match_id &&
                 r.original_match_id !== r.match_id
-                  ? ` ← ${r.match_id}`
-                  : ""}
+                  ? ` · 出力 ${r.original_match_id}`
+                  : outputId && !r.match_id
+                    ? ` · ${outputId}`
+                    : ""}
               </button>
             );
           })}
