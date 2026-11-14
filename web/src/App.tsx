@@ -57,15 +57,16 @@ export default function App() {
         ))}
       </nav>
 
-      {/* Keep pages mounted so Stats charts survive tab switches. */}
+      {/* Keep pages mounted so Stats charts survive tab switches.
+          Pass active so file lists refresh when the tab is shown again. */}
       <div className="tab-panel" hidden={tab !== "replace"}>
-        <ReplacePage />
+        <ReplacePage active={tab === "replace"} />
       </div>
       <div className="tab-panel" hidden={tab !== "autosplit"}>
-        <AutoSplitPage />
+        <AutoSplitPage active={tab === "autosplit"} />
       </div>
       <div className="tab-panel" hidden={tab !== "tools"}>
-        <ToolsPage />
+        <ToolsPage active={tab === "tools"} />
       </div>
       <div className="tab-panel" hidden={tab !== "viewer"}>
         <StatsViewerPage />

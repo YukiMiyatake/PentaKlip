@@ -93,7 +93,12 @@ function pickBestVideo(
   return { path: best.path, label: best.name, source: "highlights" };
 }
 
-export function AutoSplitPage() {
+type Props = {
+  /** When true, reload prefs and file lists (tab became visible). */
+  active?: boolean;
+};
+
+export function AutoSplitPage({ active = true }: Props) {
   const [prefs, setPrefs] = useState<UiPreferences | null>(null);
   const [outputRoot, setOutputRoot] = useState("");
   const [gameId, setGameId] = useState("");
@@ -264,8 +269,11 @@ export function AutoSplitPage() {
   }
 
   useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
     getUiPreferences()
       .then(async (p) => {
+        if (cancelled) return;
         setPrefs(p);
         const gid = p.last_game_id || "";
         if (gid) setGameId(gid);
@@ -275,32 +283,53 @@ export function AutoSplitPage() {
         } else if (p.last_events_dir) {
           await listEvents(p.last_events_dir);
         }
+        if (cancelled) return;
         const replayList = await loadReplays(p.last_replays_dir ?? null);
+        if (cancelled) return;
         let localId = "";
         if (p.fixed_target_rofl) {
           const found = replayList.items.find((i) => i.path === p.fixed_target_rofl);
           const preferred = found?.original_match_id || found?.match_id;
-          if (found?.match_id && found.original_match_id && found.match_id !== found.original_match_id) {
+          if (
+            found?.match_id &&
+            found.original_match_id &&
+            found.match_id !== found.original_match_id
+          ) {
             localId = found.match_id;
             setLocalGameId(localId);
           }
-          if (preferred && !gid) setGameId(preferred);
+          if (preferred) setGameId(preferred);
         }
         const hl = await loadHighlights(p.last_highlights_dir ?? null);
-        const resolvedGid = gid || p.last_game_id || "";
+        if (cancelled) return;
+        const resolvedGid =
+          (p.fixed_target_rofl
+            ? replayList.items.find((i) => i.path === p.fixed_target_rofl)?.original_match_id ||
+              replayList.items.find((i) => i.path === p.fixed_target_rofl)?.match_id
+            : null) ||
+          gid ||
+          p.last_game_id ||
+          "";
         if (resolvedGid) {
-          const events = p.last_output_root
-            ? await listEvents(joinOsPath(p.last_output_root, "Event"))
+          const root = p.last_output_root || outputRoot;
+          const events = root
+            ? await listEvents(joinOsPath(root, "Event"))
             : eventFiles;
-          const replayVids = p.last_output_root
-            ? await listReplayVideos(joinOsPath(p.last_output_root, "Replay"))
+          const replayVids = root
+            ? await listReplayVideos(joinOsPath(root, "Replay"))
             : [];
+          if (cancelled) return;
           applyResolvedPaths(resolvedGid, events, hl, replayVids, localId);
         }
       })
-      .catch((err) => setError(String(err)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
-  }, []);
+      .catch((err) => {
+        if (!cancelled) setError(String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when tab becomes visible
+  }, [active]);
 
   folderStateRef.current = { outputRoot };
 

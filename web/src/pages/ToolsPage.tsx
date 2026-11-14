@@ -32,7 +32,11 @@ function parentDir(path: string | null | undefined): string {
   return idx > 0 ? normalized.slice(0, idx) : normalized;
 }
 
-export function ToolsPage() {
+type Props = {
+  active?: boolean;
+};
+
+export function ToolsPage({ active = true }: Props) {
   const [status, setStatus] = useState<FfmpegStatus | null>(null);
   const [settings, setSettings] = useState<FfmpegSettings | null>(null);
   const [installDir, setInstallDir] = useState("");
@@ -54,8 +58,10 @@ export function ToolsPage() {
   }
 
   useEffect(() => {
+    if (!active) return;
     refresh().catch((err) => setError(String(err)));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when tab becomes visible
+  }, [active]);
 
   async function browseInstallDir() {
     setError(null);
