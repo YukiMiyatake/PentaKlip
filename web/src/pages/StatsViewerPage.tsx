@@ -10,6 +10,7 @@ import { LaneCompareChart } from "../components/LaneCompareChart";
 import { LaneFilterBar } from "../components/LaneFilterBar";
 import { PlayerVisibilityBar } from "../components/PlayerVisibilityBar";
 import { RadarStatChart } from "../components/RadarStatChart";
+import { RadarThresholdControl } from "../components/RadarThresholdControl";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
 import {
@@ -28,10 +29,16 @@ import {
   saveHiddenPlayers,
 } from "../playerVisibility";
 import {
+  RADAR_THRESHOLD_DEFAULT,
+  loadRadarThresholdPct,
+  saveRadarThresholdPct,
+} from "../radarScale";
+import {
   notifyDisplaySettingsChanged,
   notifyViewFiltersChanged,
   subscribeDisplaySettingsChanged,
   subscribeOutputRootChanged,
+  subscribeViewFiltersChanged,
 } from "../sync";
 import type { AggregatedReplayStats, ChartBundle, Position } from "../types";
 
@@ -67,6 +74,9 @@ export function StatsViewerPage({ active = true }: Props) {
   const [laneFilter, setLaneFilter] = useState<LaneFilter>(() => loadLaneFilter());
   const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
     loadHiddenPlayers(),
+  );
+  const [radarThresholdPct, setRadarThresholdPct] = useState(() =>
+    loadRadarThresholdPct(),
   );
 
   const syncDirectoryFromPrefs = useCallback(async () => {
@@ -113,6 +123,18 @@ export function StatsViewerPage({ active = true }: Props) {
     saveLaneFilter(next);
     notifyViewFiltersChanged();
   }
+
+  function onRadarThresholdChange(next: number) {
+    setRadarThresholdPct(next);
+    saveRadarThresholdPct(next);
+    notifyViewFiltersChanged();
+  }
+
+  useEffect(() => {
+    return subscribeViewFiltersChanged(() => {
+      setRadarThresholdPct(loadRadarThresholdPct());
+    });
+  }, []);
 
   async function persistExclusions(next: Set<string>, agg: AggregatedReplayStats) {
     const current = await getDisplaySettings();
@@ -265,6 +287,9 @@ export function StatsViewerPage({ active = true }: Props) {
     if (directory.trim()) u.searchParams.set("dir", directory.trim());
     u.searchParams.set("refresh", "30");
     if (laneFilter !== "ALL") u.searchParams.set("position", laneFilter);
+    if (radarThresholdPct !== RADAR_THRESHOLD_DEFAULT) {
+      u.searchParams.set("span", String(radarThresholdPct));
+    }
     if (hiddenPlayers.size > 0) {
       u.searchParams.set("hide", encodeHiddenParam(hiddenPlayers));
     }
@@ -328,9 +353,19 @@ export function StatsViewerPage({ active = true }: Props) {
 
       {radars.length > 0 ? (
         <div className="radar-grid" style={{ marginTop: 20 }}>
-          <h3 className="section-title">レーダー</h3>
+          <div className="section-title-row">
+            <h3 className="section-title">レーダー</h3>
+            <RadarThresholdControl
+              value={radarThresholdPct}
+              onChange={onRadarThresholdChange}
+            />
+          </div>
           {radars.map((chart) => (
-            <RadarStatChart key={chart.chart_id} chart={chart} />
+            <RadarStatChart
+              key={chart.chart_id}
+              chart={chart}
+              thresholdPct={radarThresholdPct}
+            />
           ))}
         </div>
       ) : null}
