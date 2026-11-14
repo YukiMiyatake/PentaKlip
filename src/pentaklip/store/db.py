@@ -65,7 +65,27 @@ class Database:
         local_replay_id: str | None = None,
         installed_path: str | None = None,
     ) -> int:
+        """Store the current replace mapping; one row per local slot (no history)."""
         with self.connect() as conn:
+            if local_replay_id:
+                conn.execute(
+                    "DELETE FROM replays WHERE local_replay_id = ?",
+                    (local_replay_id,),
+                )
+            if installed_path:
+                try:
+                    target = str(Path(installed_path).expanduser().resolve())
+                except OSError:
+                    target = installed_path
+                conn.execute(
+                    "DELETE FROM replays WHERE installed_path = ?",
+                    (installed_path,),
+                )
+                if target != installed_path:
+                    conn.execute(
+                        "DELETE FROM replays WHERE installed_path = ?",
+                        (target,),
+                    )
             cur = conn.execute(
                 """
                 INSERT INTO replays (
@@ -130,19 +150,6 @@ class Database:
                 (local_replay_id,),
             ).fetchone()
             return dict(row) if row else None
-
-    def list_replays_for_local_id(self, local_replay_id: str) -> list[dict[str, Any]]:
-        """All replace installs for a local slot, newest first."""
-        with self.connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM replays
-                WHERE local_replay_id = ?
-                ORDER BY id DESC
-                """,
-                (local_replay_id,),
-            ).fetchall()
-            return [dict(row) for row in rows]
 
     def insert_highlight(
         self,

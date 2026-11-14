@@ -206,7 +206,7 @@ curl -X POST http://127.0.0.1:8787/api/replays/install `
 
 - `GET /api/replays/local` … ローカル Replays 内の `.rofl` 一覧（`directory` 任意。未指定時は記憶パス → LoL 既定）
 - `GET /api/replays/parse-id?path=...` … ファイル名からマッチ ID を抽出
-- `GET /api/replays` … DB に記録した配置履歴
+- `GET /api/replays` … DB に記録した現在の置き換えマッピング（ローカル枠ごと最新1件）
 
 ## クリップ作成
 
