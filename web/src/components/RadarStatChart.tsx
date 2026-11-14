@@ -10,21 +10,26 @@ import {
   Tooltip,
 } from "recharts";
 import {
+  RADAR_SCALE_MODE_DEFAULT,
   RADAR_THRESHOLD_DEFAULT,
-  radarNormsForThreshold,
+  radarNormsForScale,
+  radarScaleTag,
+  type RadarScaleMode,
 } from "../radarScale";
 import type { ChartSpec } from "../types";
 
 type Props = {
   chart: ChartSpec;
   compact?: boolean;
-  /** Display window around baseline as ±N%. Smaller → more contrast. */
+  scaleMode?: RadarScaleMode;
+  /** Display window / contrast; ignored in `full` mode. */
   thresholdPct?: number;
 };
 
 export function RadarStatChart({
   chart,
   compact = false,
+  scaleMode = RADAR_SCALE_MODE_DEFAULT,
   thresholdPct = RADAR_THRESHOLD_DEFAULT,
 }: Props) {
   const player = chart.series.find((s) => s.key === "player") ?? chart.series[0];
@@ -32,7 +37,7 @@ export function RadarStatChart({
   const data = useMemo(
     () =>
       chart.rows.map((row) => {
-        const norms = radarNormsForThreshold(row, thresholdPct);
+        const norms = radarNormsForScale(row, scaleMode, thresholdPct);
         return {
           axis: String(row.axis ?? row.stat_key ?? ""),
           player_norm: norms.player_norm,
@@ -41,7 +46,7 @@ export function RadarStatChart({
           baseline: row.baseline,
         };
       }),
-    [chart.rows, thresholdPct],
+    [chart.rows, scaleMode, thresholdPct],
   );
 
   const height = compact ? 260 : 320;
@@ -52,7 +57,9 @@ export function RadarStatChart({
       <p className="radar-legend-hint">
         <span className="radar-swatch fill" /> {player?.label ?? "Player"}
         <span className="radar-swatch dash" /> {baseline?.label ?? "Baseline"}
-        <span className="radar-scale-tag mono">{thresholdPct}%</span>
+        <span className="radar-scale-tag mono">
+          {radarScaleTag(scaleMode, thresholdPct)}
+        </span>
       </p>
       <ResponsiveContainer width="100%" height={height}>
         <RadarChart data={data} cx="50%" cy="52%" outerRadius="72%">

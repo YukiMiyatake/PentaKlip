@@ -731,12 +731,59 @@ table.stats th {
   margin: 0;
 }
 
+.radar-scale-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: min(100%, 420px);
+}
+
+.radar-scale-mode-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.radar-scale-mode-btn {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.radar-scale-mode-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.radar-scale-mode-btn.active {
+  color: #0c100e;
+  background: var(--accent, #b7f255);
+}
+
+.radar-scale-controls.compact .radar-scale-mode-btn {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+}
+
 .radar-threshold {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  min-width: min(100%, 320px);
+  min-width: min(100%, 280px);
+  flex: 1 1 200px;
 }
 
 .radar-threshold-label {
@@ -757,16 +804,16 @@ table.stats th {
   margin: 0;
 }
 
-.radar-threshold.compact {
-  min-width: 180px;
+.radar-scale-controls.compact {
+  min-width: 220px;
   gap: 6px 10px;
 }
 
-.radar-threshold.compact .radar-threshold-label {
+.radar-scale-controls.compact .radar-threshold-label {
   font-size: 0.75rem;
 }
 
-.radar-threshold.compact input[type="range"] {
+.radar-scale-controls.compact .radar-threshold input[type="range"] {
   min-width: 100px;
   flex-basis: 100px;
 }

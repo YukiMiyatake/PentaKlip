@@ -16,10 +16,15 @@ import {
   parseHiddenParam,
 } from "../playerVisibility";
 import {
+  RADAR_SCALE_MODE_DEFAULT,
   RADAR_THRESHOLD_DEFAULT,
+  loadRadarScaleMode,
   loadRadarThresholdPct,
+  normalizeRadarScaleMode,
   normalizeRadarThresholdPct,
+  saveRadarScaleMode,
   saveRadarThresholdPct,
+  type RadarScaleMode,
 } from "../radarScale";
 import {
   notifyViewFiltersChanged,
@@ -52,6 +57,14 @@ function resolveThreshold(q: URLSearchParams): number {
   return loadRadarThresholdPct();
 }
 
+function resolveScaleMode(q: URLSearchParams): RadarScaleMode {
+  const fromUrl = q.get("scale");
+  if (fromUrl != null && fromUrl !== "") {
+    return normalizeRadarScaleMode(fromUrl);
+  }
+  return loadRadarScaleMode();
+}
+
 /**
  * OBS Browser Source overlay. Lane filter can be set here or from the Stats
  * tab / URL `position` query (kept in sync via localStorage + BroadcastChannel).
@@ -68,6 +81,9 @@ export function ObsOverlayPage() {
   const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
     resolveHidden(q),
   );
+  const [radarScaleMode, setRadarScaleMode] = useState<RadarScaleMode>(() =>
+    resolveScaleMode(q),
+  );
   const [radarThresholdPct, setRadarThresholdPct] = useState(() =>
     resolveThreshold(q),
   );
@@ -82,10 +98,12 @@ export function ObsOverlayPage() {
   }, [allRadars, laneFilter, hiddenPlayers]);
 
   const applyFiltersToUrl = useCallback(
-    (lane: LaneFilter, threshold: number) => {
+    (lane: LaneFilter, mode: RadarScaleMode, threshold: number) => {
       const u = new URL(window.location.href);
       if (lane === "ALL") u.searchParams.delete("position");
       else u.searchParams.set("position", lane);
+      if (mode === RADAR_SCALE_MODE_DEFAULT) u.searchParams.delete("scale");
+      else u.searchParams.set("scale", mode);
       if (threshold === RADAR_THRESHOLD_DEFAULT) u.searchParams.delete("span");
       else u.searchParams.set("span", String(threshold));
       u.searchParams.delete("threshold");
@@ -98,24 +116,33 @@ export function ObsOverlayPage() {
     const latest = params();
     // Prefer persisted filters so Stats ↔ OBS stay aligned after either side changes.
     const lane = loadLaneFilter();
+    const mode = loadRadarScaleMode();
     const threshold = loadRadarThresholdPct();
     setLaneFilter(lane);
+    setRadarScaleMode(mode);
     setRadarThresholdPct(threshold);
-    applyFiltersToUrl(lane, threshold);
+    applyFiltersToUrl(lane, mode, threshold);
     setHiddenPlayers(resolveHidden(latest));
   }, [applyFiltersToUrl]);
 
   function onLaneChange(next: LaneFilter) {
     setLaneFilter(next);
     saveLaneFilter(next);
-    applyFiltersToUrl(next, radarThresholdPct);
+    applyFiltersToUrl(next, radarScaleMode, radarThresholdPct);
+    notifyViewFiltersChanged();
+  }
+
+  function onRadarScaleModeChange(next: RadarScaleMode) {
+    setRadarScaleMode(next);
+    saveRadarScaleMode(next);
+    applyFiltersToUrl(laneFilter, next, radarThresholdPct);
     notifyViewFiltersChanged();
   }
 
   function onRadarThresholdChange(next: number) {
     setRadarThresholdPct(next);
     saveRadarThresholdPct(next);
-    applyFiltersToUrl(laneFilter, next);
+    applyFiltersToUrl(laneFilter, radarScaleMode, next);
     notifyViewFiltersChanged();
   }
 
@@ -203,7 +230,8 @@ export function ObsOverlayPage() {
       if (
         ev.key === "pentaklip.hiddenPlayerStats" ||
         ev.key === "pentaklip.laneFilter" ||
-        ev.key === "pentaklip.radarThresholdPct"
+        ev.key === "pentaklip.radarThresholdPct" ||
+        ev.key === "pentaklip.radarScaleMode"
       ) {
         syncFiltersFromStorage();
       }
@@ -241,8 +269,10 @@ export function ObsOverlayPage() {
           compact
         />
         <RadarThresholdControl
-          value={radarThresholdPct}
-          onChange={onRadarThresholdChange}
+          mode={radarScaleMode}
+          thresholdPct={radarThresholdPct}
+          onModeChange={onRadarScaleModeChange}
+          onThresholdChange={onRadarThresholdChange}
           compact
         />
         {meta ? (
@@ -262,6 +292,7 @@ export function ObsOverlayPage() {
             key={chart.chart_id}
             chart={chart}
             compact
+            scaleMode={radarScaleMode}
             thresholdPct={radarThresholdPct}
           />
         ))}
