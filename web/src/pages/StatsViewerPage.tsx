@@ -29,9 +29,13 @@ import {
   saveHiddenPlayers,
 } from "../playerVisibility";
 import {
+  RADAR_SCALE_MODE_DEFAULT,
   RADAR_THRESHOLD_DEFAULT,
+  loadRadarScaleMode,
   loadRadarThresholdPct,
+  saveRadarScaleMode,
   saveRadarThresholdPct,
+  type RadarScaleMode,
 } from "../radarScale";
 import {
   notifyDisplaySettingsChanged,
@@ -74,6 +78,9 @@ export function StatsViewerPage({ active = true }: Props) {
   const [laneFilter, setLaneFilter] = useState<LaneFilter>(() => loadLaneFilter());
   const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
     loadHiddenPlayers(),
+  );
+  const [radarScaleMode, setRadarScaleMode] = useState<RadarScaleMode>(() =>
+    loadRadarScaleMode(),
   );
   const [radarThresholdPct, setRadarThresholdPct] = useState(() =>
     loadRadarThresholdPct(),
@@ -124,6 +131,12 @@ export function StatsViewerPage({ active = true }: Props) {
     notifyViewFiltersChanged();
   }
 
+  function onRadarScaleModeChange(next: RadarScaleMode) {
+    setRadarScaleMode(next);
+    saveRadarScaleMode(next);
+    notifyViewFiltersChanged();
+  }
+
   function onRadarThresholdChange(next: number) {
     setRadarThresholdPct(next);
     saveRadarThresholdPct(next);
@@ -132,6 +145,7 @@ export function StatsViewerPage({ active = true }: Props) {
 
   useEffect(() => {
     return subscribeViewFiltersChanged(() => {
+      setRadarScaleMode(loadRadarScaleMode());
       setRadarThresholdPct(loadRadarThresholdPct());
     });
   }, []);
@@ -287,6 +301,9 @@ export function StatsViewerPage({ active = true }: Props) {
     if (directory.trim()) u.searchParams.set("dir", directory.trim());
     u.searchParams.set("refresh", "30");
     if (laneFilter !== "ALL") u.searchParams.set("position", laneFilter);
+    if (radarScaleMode !== RADAR_SCALE_MODE_DEFAULT) {
+      u.searchParams.set("scale", radarScaleMode);
+    }
     if (radarThresholdPct !== RADAR_THRESHOLD_DEFAULT) {
       u.searchParams.set("span", String(radarThresholdPct));
     }
@@ -356,14 +373,17 @@ export function StatsViewerPage({ active = true }: Props) {
           <div className="section-title-row">
             <h3 className="section-title">レーダー</h3>
             <RadarThresholdControl
-              value={radarThresholdPct}
-              onChange={onRadarThresholdChange}
+              mode={radarScaleMode}
+              thresholdPct={radarThresholdPct}
+              onModeChange={onRadarScaleModeChange}
+              onThresholdChange={onRadarThresholdChange}
             />
           </div>
           {radars.map((chart) => (
             <RadarStatChart
               key={chart.chart_id}
               chart={chart}
+              scaleMode={radarScaleMode}
               thresholdPct={radarThresholdPct}
             />
           ))}

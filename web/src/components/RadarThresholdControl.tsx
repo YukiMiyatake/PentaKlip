@@ -1,45 +1,86 @@
 import {
+  RADAR_SCALE_MODE_HINTS,
+  RADAR_SCALE_MODE_LABELS,
+  RADAR_SCALE_MODE_ORDER,
   RADAR_THRESHOLD_MAX,
   RADAR_THRESHOLD_MIN,
   RADAR_THRESHOLD_STEP,
+  radarScaleUsesThreshold,
+  type RadarScaleMode,
 } from "../radarScale";
 
 type Props = {
-  value: number;
-  onChange: (next: number) => void;
+  mode: RadarScaleMode;
+  thresholdPct: number;
+  onModeChange: (next: RadarScaleMode) => void;
+  onThresholdChange: (next: number) => void;
   compact?: boolean;
   className?: string;
 };
 
 export function RadarThresholdControl({
-  value,
-  onChange,
+  mode,
+  thresholdPct,
+  onModeChange,
+  onThresholdChange,
   compact = false,
   className = "",
 }: Props) {
+  const usesThreshold = radarScaleUsesThreshold(mode);
+  const thresholdSuffix =
+    mode === "center" || mode === "avg_outer"
+      ? ` ±${thresholdPct}%`
+      : ` ${thresholdPct}%`;
+
   return (
-    <label
-      className={`radar-threshold${compact ? " compact" : ""}${className ? ` ${className}` : ""}`}
+    <div
+      className={`radar-scale-controls${compact ? " compact" : ""}${className ? ` ${className}` : ""}`}
     >
-      <span className="radar-threshold-label">
-        スレッショルド
-        <span className="mono"> {value}%</span>
-      </span>
-      <input
-        type="range"
-        min={RADAR_THRESHOLD_MIN}
-        max={RADAR_THRESHOLD_MAX}
-        step={RADAR_THRESHOLD_STEP}
-        value={value}
-        aria-label="レーダースレッショルド（最大値の上側何％を表示するか）"
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
+      <div
+        className="radar-scale-mode-bar"
+        role="toolbar"
+        aria-label="レーダースケール方式"
+      >
+        {RADAR_SCALE_MODE_ORDER.map((option) => {
+          const active = mode === option;
+          return (
+            <button
+              key={option}
+              type="button"
+              className={`radar-scale-mode-btn${active ? " active" : ""}`}
+              aria-pressed={active}
+              title={RADAR_SCALE_MODE_HINTS[option]}
+              onClick={() => onModeChange(option)}
+            >
+              {RADAR_SCALE_MODE_LABELS[option]}
+            </button>
+          );
+        })}
+      </div>
+
+      {usesThreshold ? (
+        <label className="radar-threshold">
+          <span className="radar-threshold-label">
+            スレッショルド
+            <span className="mono">{thresholdSuffix}</span>
+          </span>
+          <input
+            type="range"
+            min={RADAR_THRESHOLD_MIN}
+            max={RADAR_THRESHOLD_MAX}
+            step={RADAR_THRESHOLD_STEP}
+            value={thresholdPct}
+            aria-label="レーダースレッショルド"
+            onChange={(e) => onThresholdChange(Number(e.target.value))}
+          />
+        </label>
+      ) : null}
+
       {!compact ? (
         <span className="hint radar-threshold-hint">
-          最大値の上側 N% をチャート全体に拡大（小さいほど差が見やすい / 100%
-          で従来スケール）
+          {RADAR_SCALE_MODE_HINTS[mode]}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }
