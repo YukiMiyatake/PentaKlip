@@ -715,6 +715,67 @@ table.stats th {
   font: inherit;
 }
 
+.radar-layout-board {
+  display: grid;
+  gap: 10px;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+  padding-bottom: 4px;
+  align-items: stretch;
+}
+
+.radar-layout-header {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 16, 14, 0.55);
+}
+
+.radar-layout-header-input {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.radar-layout-header-input::placeholder {
+  color: var(--muted);
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.radar-layout-header-text {
+  width: 100%;
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radar-layout-board.compact .radar-layout-header {
+  min-height: 38px;
+  padding: 4px 10px;
+}
+
+.radar-layout-board.compact .radar-layout-header-input,
+.radar-layout-board.compact .radar-layout-header-text {
+  font-size: 1.05rem;
+}
+
+/* legacy alias */
 .radar-layout-grid {
   display: grid;
   gap: 10px;
@@ -788,6 +849,23 @@ table.stats th {
   height: 100%;
   margin: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding-bottom: 8px;
+}
+
+.radar-layout-item .radar-card h3 {
+  flex: 0 0 auto;
+}
+
+.radar-layout-item .radar-card .radar-legend-hint {
+  flex: 0 0 auto;
+}
+
+.radar-layout-item .radar-card .recharts-responsive-container {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .radar-card {

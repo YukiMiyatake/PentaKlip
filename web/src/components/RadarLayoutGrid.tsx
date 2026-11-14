@@ -9,6 +9,7 @@ import {
   RADAR_CELL_HEIGHT_COMPACT,
   RADAR_CELL_WIDTH,
   RADAR_CELL_WIDTH_COMPACT,
+  RADAR_HEADER_MAX_LEN,
   ensureRadarLayout,
   type RadarLayoutState,
 } from "../radarLayout";
@@ -18,6 +19,7 @@ type Props = {
   charts: ChartSpec[];
   layout: RadarLayoutState;
   onMove: (chartId: string, toSlot: number) => void;
+  onHeaderChange?: (text: string) => void;
   renderChart: (chart: ChartSpec) => ReactNode;
   editable?: boolean;
   compact?: boolean;
@@ -28,6 +30,7 @@ export function RadarLayoutGrid({
   charts,
   layout,
   onMove,
+  onHeaderChange,
   renderChart,
   editable = true,
   compact = false,
@@ -57,6 +60,7 @@ export function RadarLayoutGrid({
   const cellW = compact ? RADAR_CELL_WIDTH_COMPACT : RADAR_CELL_WIDTH;
   const cellH = compact ? RADAR_CELL_HEIGHT_COMPACT : RADAR_CELL_HEIGHT;
   const capacity = ensured.cols * ensured.rows;
+  const canEditHeader = editable && typeof onHeaderChange === "function";
 
   function onDragStart(chartId: string, ev: DragEvent) {
     if (!editable) return;
@@ -142,12 +146,29 @@ export function RadarLayoutGrid({
 
   return (
     <div
-      className={`radar-layout-grid${compact ? " compact" : ""}${className ? ` ${className}` : ""}`}
+      className={`radar-layout-board${compact ? " compact" : ""}${className ? ` ${className}` : ""}`}
       style={{
         gridTemplateColumns: `repeat(${ensured.cols}, ${cellW}px)`,
-        gridTemplateRows: `repeat(${ensured.rows}, ${cellH}px)`,
+        gridTemplateRows: `auto repeat(${ensured.rows}, ${cellH}px)`,
       }}
     >
+      <div className="radar-layout-header">
+        {canEditHeader ? (
+          <input
+            className="radar-layout-header-input"
+            type="text"
+            value={ensured.headerText}
+            maxLength={RADAR_HEADER_MAX_LEN}
+            placeholder="チーム名"
+            aria-label="チーム名"
+            onChange={(e) => onHeaderChange(e.target.value)}
+          />
+        ) : (
+          <div className="radar-layout-header-text">
+            {ensured.headerText || "\u00a0"}
+          </div>
+        )}
+      </div>
       {cells}
     </div>
   );
