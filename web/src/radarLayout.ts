@@ -19,8 +19,8 @@ export const RADAR_HEADER_MAX_LEN = 80;
 export type RadarLayoutState = {
   cols: number;
   rows: number;
-  /** One-line team / title shown above the grid. */
-  headerText: string;
+  /** Per-column one-line team names (top header row). */
+  columnHeaders: string[];
   /**
    * chart_id → linear slot index (row-major: row * cols + col).
    * Missing ids are auto-placed; empty slots = gaps.
@@ -32,7 +32,7 @@ export function defaultRadarLayout(): RadarLayoutState {
   return {
     cols: RADAR_LAYOUT_DEFAULT_COLS,
     rows: RADAR_LAYOUT_DEFAULT_ROWS,
-    headerText: "",
+    columnHeaders: Array(RADAR_LAYOUT_DEFAULT_COLS).fill(""),
     positions: {},
   };
 }
@@ -41,6 +41,25 @@ export function normalizeRadarHeaderText(value: unknown): string {
   if (typeof value !== "string") return "";
   const oneLine = value.replace(/[\r\n]+/g, " ").trimStart();
   return oneLine.slice(0, RADAR_HEADER_MAX_LEN);
+}
+
+/** Resize / pad column header list to match `cols`. */
+export function normalizeColumnHeaders(
+  headers: unknown,
+  cols: number,
+  legacyHeaderText?: unknown,
+): string[] {
+  const out = Array.from({ length: cols }, () => "");
+  if (Array.isArray(headers)) {
+    for (let i = 0; i < cols; i += 1) {
+      out[i] = normalizeRadarHeaderText(headers[i]);
+    }
+    return out;
+  }
+  // Migrate older single headerText into column 0.
+  const legacy = normalizeRadarHeaderText(legacyHeaderText);
+  if (legacy) out[0] = legacy;
+  return out;
 }
 
 function clampInt(n: number, min: number, max: number, fallback: number): number {
@@ -78,7 +97,11 @@ export function normalizeRadarLayout(raw: unknown): RadarLayoutState {
   return {
     cols,
     rows,
-    headerText: normalizeRadarHeaderText(obj.headerText),
+    columnHeaders: normalizeColumnHeaders(
+      (obj as { columnHeaders?: unknown }).columnHeaders,
+      cols,
+      (obj as { headerText?: unknown }).headerText,
+    ),
     positions,
   };
 }
@@ -190,7 +213,7 @@ export function ensureRadarLayout(
   return {
     cols,
     rows,
-    headerText: normalizeRadarHeaderText(layout.headerText),
+    columnHeaders: normalizeColumnHeaders(layout.columnHeaders, cols),
     positions,
   };
 }
@@ -241,22 +264,28 @@ export function moveRadarChart(
 
 export function resetRadarLayout(
   chartIds: string[],
-  headerText = "",
+  columnHeaders: string[] = [],
 ): RadarLayoutState {
+  const base = defaultRadarLayout();
   return ensureRadarLayout(
-    { ...defaultRadarLayout(), headerText: normalizeRadarHeaderText(headerText) },
+    {
+      ...base,
+      columnHeaders: normalizeColumnHeaders(columnHeaders, base.cols),
+    },
     chartIds,
   );
 }
 
-export function setRadarLayoutHeader(
+export function setRadarColumnHeader(
   layout: RadarLayoutState,
-  headerText: string,
+  col: number,
+  text: string,
 ): RadarLayoutState {
-  return {
-    ...layout,
-    headerText: normalizeRadarHeaderText(headerText),
-  };
+  const cols = layout.cols;
+  if (col < 0 || col >= cols) return layout;
+  const columnHeaders = normalizeColumnHeaders(layout.columnHeaders, cols);
+  columnHeaders[col] = normalizeRadarHeaderText(text);
+  return { ...layout, columnHeaders };
 }
 
 export function slotToCell(

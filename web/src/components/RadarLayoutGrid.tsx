@@ -19,7 +19,7 @@ type Props = {
   charts: ChartSpec[];
   layout: RadarLayoutState;
   onMove: (chartId: string, toSlot: number) => void;
-  onHeaderChange?: (text: string) => void;
+  onColumnHeaderChange?: (col: number, text: string) => void;
   renderChart: (chart: ChartSpec) => ReactNode;
   editable?: boolean;
   compact?: boolean;
@@ -30,7 +30,7 @@ export function RadarLayoutGrid({
   charts,
   layout,
   onMove,
-  onHeaderChange,
+  onColumnHeaderChange,
   renderChart,
   editable = true,
   compact = false,
@@ -60,7 +60,9 @@ export function RadarLayoutGrid({
   const cellW = compact ? RADAR_CELL_WIDTH_COMPACT : RADAR_CELL_WIDTH;
   const cellH = compact ? RADAR_CELL_HEIGHT_COMPACT : RADAR_CELL_HEIGHT;
   const capacity = ensured.cols * ensured.rows;
-  const canEditHeader = editable && typeof onHeaderChange === "function";
+  const canEditHeader =
+    editable && typeof onColumnHeaderChange === "function";
+  const headers = ensured.columnHeaders;
 
   function onDragStart(chartId: string, ev: DragEvent) {
     if (!editable) return;
@@ -152,23 +154,25 @@ export function RadarLayoutGrid({
         gridTemplateRows: `auto repeat(${ensured.rows}, ${cellH}px)`,
       }}
     >
-      <div className="radar-layout-header">
-        {canEditHeader ? (
-          <input
-            className="radar-layout-header-input"
-            type="text"
-            value={ensured.headerText}
-            maxLength={RADAR_HEADER_MAX_LEN}
-            placeholder="チーム名"
-            aria-label="チーム名"
-            onChange={(e) => onHeaderChange(e.target.value)}
-          />
-        ) : (
-          <div className="radar-layout-header-text">
-            {ensured.headerText || "\u00a0"}
-          </div>
-        )}
-      </div>
+      {Array.from({ length: ensured.cols }, (_, col) => (
+        <div key={`header-${col}`} className="radar-layout-header-cell">
+          {canEditHeader ? (
+            <input
+              className="radar-layout-header-input"
+              type="text"
+              value={headers[col] ?? ""}
+              maxLength={RADAR_HEADER_MAX_LEN}
+              placeholder={`チーム名 ${col + 1}`}
+              aria-label={`列 ${col + 1} のチーム名`}
+              onChange={(e) => onColumnHeaderChange(col, e.target.value)}
+            />
+          ) : (
+            <div className="radar-layout-header-text">
+              {headers[col] || "\u00a0"}
+            </div>
+          )}
+        </div>
+      ))}
       {cells}
     </div>
   );
