@@ -124,6 +124,69 @@ def test_install_prefers_rofl_meta_game_id(tmp_path: Path) -> None:
     assert result.original_match_id == "KR-999888777"
 
 
+def test_install_uses_local_filename_not_db_original(tmp_path: Path, monkeypatch) -> None:
+    """Replace must overwrite a.rofl, never create b.rofl beside it."""
+    from fastapi.testclient import TestClient
+
+    import pentaklip.store.db as db_mod
+    from pentaklip import config
+    from pentaklip.api.app import app
+    from pentaklip.settings_store import UiPreferences, load_ui_preferences, save_ui_preferences
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setattr(config.settings, "data_dir", data_dir)
+    monkeypatch.setattr(db_mod, "_db", None)
+
+    saved_root = str((tmp_path / "MyOutput").resolve())
+    save_ui_preferences(
+        data_dir,
+        UiPreferences(last_output_root=saved_root, last_game_id="OLD"),
+    )
+
+    replays = tmp_path / "Replays"
+    replays.mkdir()
+    target = replays / "JP1-111.rofl"
+    target.write_bytes(b"old")
+    # Prior replace recorded original KR-999 — inspect must not make install use it as dest name.
+    db_mod.get_database().insert_replay(
+        original_match_id="KR-999888777",
+        original_filename="KR-999888777.rofl",
+        local_replay_id="JP1-111",
+        installed_path=str(target),
+    )
+
+    source = tmp_path / "KR-222222222.rofl"
+    source.write_bytes(b"new-bytes")
+
+    client = TestClient(app)
+    overview = client.get("/api/replays/inspect", params={"path": str(target)}).json()
+    assert overview["match_id"] == "JP1-111"
+    assert overview["original_match_id"] == "KR-999888777"
+
+    response = client.post(
+        "/api/replays/install",
+        json={
+            "source_path": str(source),
+            "local_replay_id": overview["match_id"],
+            "replays_dir": str(replays),
+            "mode": "copy",
+            "dry_run": False,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["local_replay_id"] == "JP1-111"
+    assert body["original_match_id"] == "KR-222222222"
+    assert Path(body["installed_path"]) == target.resolve()
+    assert target.read_bytes() == b"new-bytes"
+    assert not (replays / "KR-222222222.rofl").exists()
+    assert not (replays / "KR-999888777.rofl").exists()
+
+    prefs = load_ui_preferences(data_dir)
+    assert prefs.last_output_root == saved_root
+
+
 def test_api_inspect_prefers_replace_db_original(tmp_path: Path, monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
@@ -155,5 +218,7 @@ def test_api_inspect_prefers_replace_db_original(tmp_path: Path, monkeypatch) ->
     assert listed["items"][0]["original_match_id"] == "KR-999888777"
 
     overview = client.get("/api/replays/inspect", params={"path": str(installed)}).json()
-    assert overview["match_id"] == "KR-999888777"
-    assert overview["match_id_source"] == "db"
+    # On-disk local id stays in match_id; replace original is separate.
+    assert overview["match_id"] == "JP1-111"
+    assert overview["match_id_source"] == "filename"
+    assert overview["original_match_id"] == "KR-999888777"

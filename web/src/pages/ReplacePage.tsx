@@ -254,7 +254,11 @@ export function ReplacePage() {
       setError("置き換え先とコピー元を選択してください");
       return;
     }
-    const localId = targetOverview.match_id;
+    // Always use on-disk local filename id (a), never output/original id (b).
+    const localId =
+      locals.find((item) => normPath(item.path) === normPath(targetPath))?.match_id ||
+      fileNameOf(targetPath).replace(/\.rofl$/i, "") ||
+      (targetOverview.match_id_source === "filename" ? targetOverview.match_id : null);
     if (!localId) {
       setError("置き換え先のマッチ ID をファイル名から取得できません");
       return;

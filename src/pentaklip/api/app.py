@@ -63,7 +63,6 @@ from pentaklip.settings_store import (
     list_directory,
     load_ui_preferences,
     pick_directory,
-    save_ui_preferences,
     ui_preferences_path,
     update_ui_preferences,
 )
@@ -166,10 +165,15 @@ def api_install_replay(body: InstallReplayRequest) -> InstallReplayResponse:
             local_replay_id=result.local_replay_id,
             installed_path=str(result.installed_path),
         )
-        prefs.last_game_id = result.original_match_id
-        prefs.fixed_target_rofl = str(result.installed_path)
-        prefs.last_replays_dir = str(Path(result.installed_path).parent)
-        save_ui_preferences(settings.data_dir, prefs)
+        # Merge-only so last_output_root / other folders are never wiped.
+        update_ui_preferences(
+            settings.data_dir,
+            {
+                "last_game_id": result.original_match_id,
+                "fixed_target_rofl": str(result.installed_path),
+                "last_replays_dir": str(Path(result.installed_path).parent),
+            },
+        )
 
     return InstallReplayResponse(
         replay_db_id=replay_db_id,
@@ -360,20 +364,18 @@ def api_create_clips(body: CreateClipsRequest) -> CreateClipsResponse:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     if not body.dry_run:
-        changed = False
+        updates: dict = {}
         if game_id and prefs.last_game_id != game_id:
-            prefs.last_game_id = game_id
-            changed = True
+            updates["last_game_id"] = game_id
         root_for_prefs = str(layout.root)
-        if prefs.last_output_root != root_for_prefs:
-            prefs.last_output_root = root_for_prefs
-            changed = True
+        # Keep an existing saved output base; only fill when unset.
+        if not prefs.last_output_root and root_for_prefs:
+            updates["last_output_root"] = root_for_prefs
         event_dir = str(layout.event_dir)
         if prefs.last_events_dir != event_dir:
-            prefs.last_events_dir = event_dir
-            changed = True
-        if changed:
-            save_ui_preferences(settings.data_dir, prefs)
+            updates["last_events_dir"] = event_dir
+        if updates:
+            update_ui_preferences(settings.data_dir, updates)
 
     clip_items: list[CreatedClipItem] = []
     for clip in result.clips:
@@ -571,18 +573,16 @@ def api_events_export(body: ExportEventsRequest) -> ExportEventsResponse:
         if Path(export_dir).name == "Event"
         else str(layout.root)
     )
-    changed = False
+    updates: dict = {}
     if prefs.last_events_dir != export_dir:
-        prefs.last_events_dir = export_dir
-        changed = True
-    if prefs.last_output_root != root_dir:
-        prefs.last_output_root = root_dir
-        changed = True
-    if prefs.last_game_id != result.game_id:
-        prefs.last_game_id = result.game_id
-        changed = True
-    if changed:
-        save_ui_preferences(settings.data_dir, prefs)
+        updates["last_events_dir"] = export_dir
+    # Never clobber a user-saved output base with a fallback/default.
+    if not prefs.last_output_root and root_dir:
+        updates["last_output_root"] = root_dir
+    if result.game_id and prefs.last_game_id != result.game_id:
+        updates["last_game_id"] = result.game_id
+    if updates:
+        update_ui_preferences(settings.data_dir, updates)
 
     return ExportEventsResponse.model_validate(result.model_dump())
 
@@ -596,7 +596,8 @@ def api_inspect_rofl(path: str) -> RoflOverview:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # After replace/copy the on-disk name is the local id; prefer DB original.
+    # Keep match_id as on-disk/meta id (local filename after replace).
+    # Expose replace DB original separately so install never renames to b.rofl.
     gid, src = game_id_from_rofl_path(path, db=get_database())
     if gid and src == "db":
         note = f"置き換え記録の元ゲーム ID · {gid}"
@@ -604,8 +605,7 @@ def api_inspect_rofl(path: str) -> RoflOverview:
             note = f"{note} / {overview.note}"
         return overview.model_copy(
             update={
-                "match_id": gid,
-                "match_id_source": "db",
+                "original_match_id": gid,
                 "note": note,
             }
         )
