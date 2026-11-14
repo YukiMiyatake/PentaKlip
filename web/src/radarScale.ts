@@ -1,4 +1,9 @@
-/** Radar display scale: expand ±threshold% around the baseline (avg). */
+/**
+ * Radar display scale: stretch the top `thresholdPct` of peak → [0, 1].
+ * 100% matches the old max-abs scale (floor at 0). Smaller % raises the floor
+ * so near-peak values (e.g. 90 vs 100) separate more, without pinning average
+ * to the chart center.
+ */
 
 export const RADAR_THRESHOLD_STORAGE_KEY = "pentaklip.radarThresholdPct";
 export const RADAR_THRESHOLD_MIN = 5;
@@ -66,8 +71,8 @@ function clamp01(n: number): number {
 }
 
 /**
- * Remap raw radar values so baseline sits at 0.5 and ±thresholdPct of the
- * reference fills the chart. Smaller threshold → more contrast near average.
+ * Map absolute magnitudes onto [0, 1] using floor = peak * (1 - span).
+ * Outer ring stays at peak (same as before); average is not forced to center.
  */
 export function radarNormsForThreshold(
   row: RadarScaleRow,
@@ -84,6 +89,7 @@ export function radarNormsForThreshold(
   const peak = Math.max(asNumber(row.max) ?? 0, 1e-9);
 
   if (signed) {
+    // Zoom ±peak around 0; span=1 matches server mapping.
     const half = peak * span;
     const mapSigned = (v: number | null): number => {
       if (v == null) return 0.5;
@@ -95,29 +101,17 @@ export function radarNormsForThreshold(
     };
   }
 
-  if (baseline == null) {
-    const mapAbs = (v: number | null): number => {
-      if (v == null) return 0;
-      const ratio = clamp01(Math.abs(v) / (peak * span));
-      return lower ? 1 - ratio : ratio;
-    };
-    return {
-      player_norm: mapAbs(player),
-      baseline_norm: 0.5,
-    };
-  }
+  const floor = peak * (1 - span);
+  const range = Math.max(peak - floor, 1e-9);
 
-  const ref = Math.abs(baseline) > 1e-9 ? Math.abs(baseline) : peak;
-  const half = Math.max(ref * span, 1e-9);
-
-  const mapAroundBaseline = (v: number | null): number => {
+  const mapAbs = (v: number | null): number => {
     if (v == null) return 0;
-    const delta = lower ? baseline - v : v - baseline;
-    return clamp01(0.5 + 0.5 * (delta / half));
+    const ratio = clamp01((Math.abs(v) - floor) / range);
+    return lower ? 1 - ratio : ratio;
   };
 
   return {
-    player_norm: mapAroundBaseline(player),
-    baseline_norm: 0.5,
+    player_norm: mapAbs(player),
+    baseline_norm: mapAbs(baseline),
   };
 }
