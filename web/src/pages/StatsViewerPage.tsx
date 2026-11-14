@@ -166,10 +166,10 @@ export function StatsViewerPage({ active = true }: Props) {
     });
   }, []);
 
-  function persistRadarLayout(next: RadarLayoutState) {
+  function persistRadarLayout(next: RadarLayoutState, opts?: { quiet?: boolean }) {
     setRadarLayout(next);
     saveRadarLayout(next);
-    notifyViewFiltersChanged();
+    if (!opts?.quiet) notifyViewFiltersChanged();
   }
 
   async function persistExclusions(next: Set<string>, agg: AggregatedReplayStats) {
@@ -431,7 +431,10 @@ export function StatsViewerPage({ active = true }: Props) {
               persistRadarLayout(moveRadarChart(radarLayout, chartId, toSlot, ids));
             }}
             onColumnHeaderChange={(col, text) => {
-              persistRadarLayout(setRadarColumnHeader(radarLayout, col, text));
+              // Quiet: no BroadcastChannel echo (OBS picks up via storage event).
+              persistRadarLayout(setRadarColumnHeader(radarLayout, col, text), {
+                quiet: true,
+              });
             }}
             renderChart={(chart) => (
               <RadarStatChart

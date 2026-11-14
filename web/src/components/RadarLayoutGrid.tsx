@@ -1,5 +1,7 @@
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
   type ReactNode,
@@ -11,6 +13,7 @@ import {
   RADAR_CELL_WIDTH_COMPACT,
   RADAR_HEADER_MAX_LEN,
   ensureRadarLayout,
+  normalizeColumnHeaders,
   type RadarLayoutState,
 } from "../radarLayout";
 import type { ChartSpec } from "../types";
@@ -25,6 +28,8 @@ type Props = {
   compact?: boolean;
   className?: string;
 };
+
+const HEADER_PERSIST_MS = 400;
 
 export function RadarLayoutGrid({
   charts,
@@ -57,12 +62,50 @@ export function RadarLayoutGrid({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overSlot, setOverSlot] = useState<number | null>(null);
 
+  // Draft headers so typing does not re-render / remount radar charts each key.
+  const [draftHeaders, setDraftHeaders] = useState(() =>
+    normalizeColumnHeaders(ensured.columnHeaders, ensured.cols),
+  );
+  const focusedColRef = useRef<number | null>(null);
+  const persistTimerRef = useRef<number | null>(null);
+  const draftHeadersRef = useRef(draftHeaders);
+  draftHeadersRef.current = draftHeaders;
+  const onColumnHeaderChangeRef = useRef(onColumnHeaderChange);
+  onColumnHeaderChangeRef.current = onColumnHeaderChange;
+
+  const headersKey = ensured.columnHeaders.join("\u0001");
+  useEffect(() => {
+    if (focusedColRef.current != null) return;
+    setDraftHeaders(normalizeColumnHeaders(ensured.columnHeaders, ensured.cols));
+  }, [ensured.cols, headersKey, ensured.columnHeaders]);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, []);
+
+  function flushHeader(col: number, text: string) {
+    onColumnHeaderChangeRef.current?.(col, text);
+  }
+
+  function scheduleHeaderPersist(col: number, text: string) {
+    if (persistTimerRef.current != null) {
+      window.clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = window.setTimeout(() => {
+      persistTimerRef.current = null;
+      flushHeader(col, text);
+    }, HEADER_PERSIST_MS);
+  }
+
   const cellW = compact ? RADAR_CELL_WIDTH_COMPACT : RADAR_CELL_WIDTH;
   const cellH = compact ? RADAR_CELL_HEIGHT_COMPACT : RADAR_CELL_HEIGHT;
   const capacity = ensured.cols * ensured.rows;
   const canEditHeader =
     editable && typeof onColumnHeaderChange === "function";
-  const headers = ensured.columnHeaders;
 
   function onDragStart(chartId: string, ev: DragEvent) {
     if (!editable) return;
@@ -160,15 +203,34 @@ export function RadarLayoutGrid({
             <input
               className="radar-layout-header-input"
               type="text"
-              value={headers[col] ?? ""}
+              value={draftHeaders[col] ?? ""}
               maxLength={RADAR_HEADER_MAX_LEN}
               placeholder={`チーム名 ${col + 1}`}
               aria-label={`列 ${col + 1} のチーム名`}
-              onChange={(e) => onColumnHeaderChange(col, e.target.value)}
+              onFocus={() => {
+                focusedColRef.current = col;
+              }}
+              onChange={(e) => {
+                const text = e.target.value;
+                setDraftHeaders((prev) => {
+                  const next = normalizeColumnHeaders(prev, ensured.cols);
+                  next[col] = text;
+                  return next;
+                });
+                scheduleHeaderPersist(col, text);
+              }}
+              onBlur={() => {
+                focusedColRef.current = null;
+                if (persistTimerRef.current != null) {
+                  window.clearTimeout(persistTimerRef.current);
+                  persistTimerRef.current = null;
+                }
+                flushHeader(col, draftHeadersRef.current[col] ?? "");
+              }}
             />
           ) : (
             <div className="radar-layout-header-text">
-              {headers[col] || "\u00a0"}
+              {draftHeaders[col] || ensured.columnHeaders[col] || "\u00a0"}
             </div>
           )}
         </div>

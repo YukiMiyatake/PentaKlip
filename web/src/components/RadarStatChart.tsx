@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import {
   Legend,
   PolarAngleAxis,
@@ -26,7 +26,7 @@ type Props = {
   thresholdPct?: number;
 };
 
-export function RadarStatChart({
+export const RadarStatChart = memo(function RadarStatChart({
   chart,
   compact = false,
   scaleMode = RADAR_SCALE_MODE_DEFAULT,
@@ -107,4 +107,4 @@ export function RadarStatChart({
       </ResponsiveContainer>
     </section>
   );
-}
+});

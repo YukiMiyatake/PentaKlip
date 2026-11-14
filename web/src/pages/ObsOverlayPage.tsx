@@ -141,10 +141,10 @@ export function ObsOverlayPage() {
     setHiddenPlayers(resolveHidden(latest));
   }, [applyFiltersToUrl]);
 
-  function persistRadarLayout(next: RadarLayoutState) {
+  function persistRadarLayout(next: RadarLayoutState, opts?: { quiet?: boolean }) {
     setRadarLayout(next);
     saveRadarLayout(next);
-    notifyViewFiltersChanged();
+    if (!opts?.quiet) notifyViewFiltersChanged();
   }
 
   function onLaneChange(next: LaneFilter) {
@@ -349,7 +349,9 @@ export function ObsOverlayPage() {
               );
             }}
             onColumnHeaderChange={(col, text) => {
-              persistRadarLayout(setRadarColumnHeader(radarLayout, col, text));
+              persistRadarLayout(setRadarColumnHeader(radarLayout, col, text), {
+                quiet: true,
+              });
             }}
             renderChart={(chart) => (
               <RadarStatChart
