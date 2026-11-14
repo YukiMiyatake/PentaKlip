@@ -90,9 +90,20 @@ def test_api_list_local_replays_uses_directory(tmp_path: Path, monkeypatch) -> N
     assert remembered["items"][0]["match_id"] == "JP1-42"
 
 
-def test_install_prefers_rofl_meta_game_id(tmp_path: Path) -> None:
-    from tests.test_rofl_metadata import _classic_rofl_bytes
+def _classic_rofl_bytes(meta: dict) -> bytes:
+    import json
 
+    meta_bytes = json.dumps(meta, separators=(",", ":")).encode("utf-8")
+    header = bytearray(288)
+    header[0:4] = b"RIOT"
+    header[4:6] = b"\x00\x00"
+    offset = 288
+    header[268:272] = int(offset).to_bytes(4, "little")
+    header[272:276] = len(meta_bytes).to_bytes(4, "little")
+    return bytes(header) + meta_bytes
+
+
+def test_install_prefers_rofl_meta_game_id(tmp_path: Path) -> None:
     source = tmp_path / "downloaded-odd-name.rofl"
     source.write_bytes(
         _classic_rofl_bytes(
