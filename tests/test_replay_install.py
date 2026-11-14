@@ -88,3 +88,61 @@ def test_api_list_local_replays_uses_directory(tmp_path: Path, monkeypatch) -> N
     remembered = client.get("/api/replays/local").json()
     assert remembered["directory"] == str(custom.resolve())
     assert remembered["items"][0]["match_id"] == "JP1-42"
+
+
+def test_install_prefers_rofl_meta_game_id(tmp_path: Path) -> None:
+    from tests.test_rofl_metadata import _classic_rofl_bytes
+
+    source = tmp_path / "downloaded-odd-name.rofl"
+    source.write_bytes(
+        _classic_rofl_bytes(
+            {
+                "gameLength": 1000,
+                "gameVersion": "14.1.1",
+                "gameMode": "CLASSIC",
+                "gameId": "KR-999888777",
+                "statsJson": "[]",
+            }
+        )
+    )
+    result = install_replay(
+        source,
+        local_replay_id="JP1-111",
+        replays_dir=tmp_path / "Replays",
+    )
+    assert result.original_match_id == "KR-999888777"
+
+
+def test_api_inspect_prefers_replace_db_original(tmp_path: Path, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from pentaklip import config
+    from pentaklip.api.app import app
+    import pentaklip.store.db as db_mod
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setattr(config.settings, "data_dir", data_dir)
+    monkeypatch.setattr(db_mod, "_db", None)
+
+    replays = tmp_path / "Replays"
+    replays.mkdir()
+    installed = replays / "JP1-111.rofl"
+    installed.write_bytes(b"not-a-real-rofl")
+
+    db = db_mod.get_database()
+    db.insert_replay(
+        original_match_id="KR-999888777",
+        original_filename="KR-999888777.rofl",
+        local_replay_id="JP1-111",
+        installed_path=str(installed),
+    )
+
+    client = TestClient(app)
+    listed = client.get("/api/replays/local", params={"directory": str(replays)}).json()
+    assert listed["items"][0]["match_id"] == "JP1-111"
+    assert listed["items"][0]["original_match_id"] == "KR-999888777"
+
+    overview = client.get("/api/replays/inspect", params={"path": str(installed)}).json()
+    assert overview["match_id"] == "KR-999888777"
+    assert overview["match_id_source"] == "db"

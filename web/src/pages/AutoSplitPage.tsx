@@ -204,12 +204,14 @@ export function AutoSplitPage() {
     setRoflPath(path);
     setError(null);
     setResult(null);
+    // Prefer caller hint (DB original_match_id) over filename local id.
     let gid = matchId?.trim() || "";
     try {
       const overview = await inspectRofl(path);
+      // inspect prefers replace-DB original; meta next; filename last.
       if (overview.match_id) gid = overview.match_id;
     } catch {
-      // filename match_id from list is enough as fallback
+      // filename / original_match_id from list is enough as fallback
     }
     if (!gid) {
       await rememberPrefs({ fixed_target_rofl: path });
@@ -239,7 +241,8 @@ export function AutoSplitPage() {
         const replayList = await loadReplays(p.last_replays_dir ?? null);
         if (p.fixed_target_rofl) {
           const found = replayList.items.find((i) => i.path === p.fixed_target_rofl);
-          if (found?.match_id && !gid) setGameId(found.match_id);
+          const preferred = found?.original_match_id || found?.match_id;
+          if (preferred && !gid) setGameId(preferred);
         }
         const hl = await loadHighlights(p.last_highlights_dir ?? null);
         const resolvedGid = gid || p.last_game_id || "";
@@ -504,16 +507,24 @@ export function AutoSplitPage() {
           </button>
         </div>
         <div className="file-list">
-          {replays.map((r) => (
-            <button
-              key={r.path}
-              className={`file-item ${roflPath === r.path ? "active" : ""}`}
-              onClick={() => selectRofl(r.path, r.match_id)}
-            >
-              {r.filename}
-              {r.match_id ? ` · ${r.match_id}` : ""}
-            </button>
-          ))}
+          {replays.map((r) => {
+            const preferredId = r.original_match_id || r.match_id;
+            return (
+              <button
+                key={r.path}
+                className={`file-item ${roflPath === r.path ? "active" : ""}`}
+                onClick={() => selectRofl(r.path, preferredId)}
+              >
+                {r.filename}
+                {preferredId ? ` · ${preferredId}` : ""}
+                {r.original_match_id &&
+                r.match_id &&
+                r.original_match_id !== r.match_id
+                  ? ` ← ${r.match_id}`
+                  : ""}
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -83,8 +83,9 @@ def install_replay(
     """
     Place `source` into `replays_dir` as `{local_replay_id}.rofl`.
 
-    Preserves the original match id derived from the source filename (or stem fallback)
-    so callers can store it even though the on-disk name changes.
+    Preserves the original match id from ROFL metadata ``gameId`` when present,
+    else the source filename (or stem fallback), so callers can store it even
+    though the on-disk name changes to the local replay id.
     """
     source = source.resolve()
     if not source.is_file():
@@ -92,7 +93,16 @@ def install_replay(
     if source.suffix.lower() != ".rofl":
         raise ValueError(f"Expected a .rofl file, got: {source.name}")
 
+    # Prefer ROFL metadata gameId (rename-stable); filename is fallback.
     original_match_id = parse_match_id_from_filename(source) or source.stem
+    try:
+        from pentaklip.replay.metadata import inspect_rofl
+
+        overview = inspect_rofl(source)
+        if overview.match_id and overview.match_id_source == "meta":
+            original_match_id = overview.match_id
+    except (OSError, ValueError):
+        pass
     original_filename = source.name
     local_replay_id = local_replay_id.removesuffix(".rofl")
 

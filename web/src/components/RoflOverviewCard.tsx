@@ -30,7 +30,10 @@ export function RoflOverviewCard({ overview, title }: Props) {
         </div>
         <div>
           <dt>マッチ ID</dt>
-          <dd className="mono">{overview.match_id ?? "—"}</dd>
+          <dd className="mono">
+            {overview.match_id ?? "—"}
+            {overview.match_id_source ? ` · ${overview.match_id_source}` : ""}
+          </dd>
         </div>
         <div>
           <dt>形式</dt>

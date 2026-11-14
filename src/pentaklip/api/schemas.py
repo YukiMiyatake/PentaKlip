@@ -42,6 +42,9 @@ class LocalReplayItem(BaseModel):
     path: str
     filename: str
     match_id: str | None
+    """Filename-derived local id (changes after replace)."""
+    original_match_id: str | None = None
+    """Replace-install DB / preferred game id for auto-split folders."""
     size_bytes: int
 
 

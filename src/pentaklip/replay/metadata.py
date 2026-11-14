@@ -21,7 +21,7 @@ class RoflOverview(BaseModel):
     path: str
     filename: str
     match_id: str | None = None
-    match_id_source: Literal["meta", "meta_fingerprint", "filename"] | None = None
+    match_id_source: Literal["meta", "meta_fingerprint", "filename", "db"] | None = None
     format: str | None = None
     game_version: str | None = None
     game_length_ms: int | None = None
@@ -217,7 +217,7 @@ def _overview_from_meta(path: Path, meta: dict[str, Any], fmt: str) -> RoflOverv
     filename_id = parse_match_id_from_filename(path)
     fingerprint = fingerprint_rofl_meta(meta, stats)
     note = None
-    match_id_source: Literal["meta", "meta_fingerprint", "filename"] | None
+    match_id_source: Literal["meta", "meta_fingerprint", "filename", "db"] | None
     if meta_id:
         match_id = meta_id
         match_id_source = "meta" if meta_source == "meta" else "meta_fingerprint"
