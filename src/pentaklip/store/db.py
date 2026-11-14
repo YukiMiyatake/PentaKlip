@@ -131,6 +131,19 @@ class Database:
             ).fetchone()
             return dict(row) if row else None
 
+    def list_replays_for_local_id(self, local_replay_id: str) -> list[dict[str, Any]]:
+        """All replace installs for a local slot, newest first."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM replays
+                WHERE local_replay_id = ?
+                ORDER BY id DESC
+                """,
+                (local_replay_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def insert_highlight(
         self,
         *,
