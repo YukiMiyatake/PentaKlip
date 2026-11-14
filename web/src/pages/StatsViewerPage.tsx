@@ -9,10 +9,21 @@ import {
 import { LaneCompareChart } from "../components/LaneCompareChart";
 import { LaneFilterBar } from "../components/LaneFilterBar";
 import { PlayerVisibilityBar } from "../components/PlayerVisibilityBar";
+import { RadarLayoutControls } from "../components/RadarLayoutControls";
+import { RadarLayoutGrid } from "../components/RadarLayoutGrid";
 import { RadarStatChart } from "../components/RadarStatChart";
 import { RadarThresholdControl } from "../components/RadarThresholdControl";
 import { StatChart } from "../components/StatChart";
 import { StatTable } from "../components/StatTable";
+import {
+  ensureRadarLayout,
+  loadRadarLayout,
+  moveRadarChart,
+  resetRadarLayout,
+  resizeRadarLayout,
+  saveRadarLayout,
+  type RadarLayoutState,
+} from "../radarLayout";
 import {
   filterChartsByLane,
   loadLaneFilter,
@@ -85,6 +96,9 @@ export function StatsViewerPage({ active = true }: Props) {
   const [radarThresholdPct, setRadarThresholdPct] = useState(() =>
     loadRadarThresholdPct(),
   );
+  const [radarLayout, setRadarLayout] = useState<RadarLayoutState>(() =>
+    loadRadarLayout(),
+  );
 
   const syncDirectoryFromPrefs = useCallback(async () => {
     const p = await getUiPreferences();
@@ -147,8 +161,15 @@ export function StatsViewerPage({ active = true }: Props) {
     return subscribeViewFiltersChanged(() => {
       setRadarScaleMode(loadRadarScaleMode());
       setRadarThresholdPct(loadRadarThresholdPct());
+      setRadarLayout(loadRadarLayout());
     });
   }, []);
+
+  function persistRadarLayout(next: RadarLayoutState) {
+    setRadarLayout(next);
+    saveRadarLayout(next);
+    notifyViewFiltersChanged();
+  }
 
   async function persistExclusions(next: Set<string>, agg: AggregatedReplayStats) {
     const current = await getDisplaySettings();
@@ -369,7 +390,7 @@ export function StatsViewerPage({ active = true }: Props) {
       ) : null}
 
       {radars.length > 0 ? (
-        <div className="radar-grid" style={{ marginTop: 20 }}>
+        <div className="radar-section" style={{ marginTop: 20 }}>
           <div className="section-title-row">
             <h3 className="section-title">レーダー</h3>
             <RadarThresholdControl
@@ -379,14 +400,39 @@ export function StatsViewerPage({ active = true }: Props) {
               onThresholdChange={onRadarThresholdChange}
             />
           </div>
-          {radars.map((chart) => (
-            <RadarStatChart
-              key={chart.chart_id}
-              chart={chart}
-              scaleMode={radarScaleMode}
-              thresholdPct={radarThresholdPct}
-            />
-          ))}
+          <RadarLayoutControls
+            layout={ensureRadarLayout(
+              radarLayout,
+              radars.map((c) => c.chart_id),
+            )}
+            onColsChange={(cols) => {
+              const ids = radars.map((c) => c.chart_id);
+              persistRadarLayout(resizeRadarLayout(radarLayout, cols, radarLayout.rows, ids));
+            }}
+            onRowsChange={(rows) => {
+              const ids = radars.map((c) => c.chart_id);
+              persistRadarLayout(resizeRadarLayout(radarLayout, radarLayout.cols, rows, ids));
+            }}
+            onReset={() => {
+              persistRadarLayout(resetRadarLayout(radars.map((c) => c.chart_id)));
+            }}
+          />
+          <RadarLayoutGrid
+            charts={radars}
+            layout={radarLayout}
+            onMove={(chartId, toSlot) => {
+              const ids = radars.map((c) => c.chart_id);
+              persistRadarLayout(moveRadarChart(radarLayout, chartId, toSlot, ids));
+            }}
+            renderChart={(chart) => (
+              <RadarStatChart
+                chart={chart}
+                compact
+                scaleMode={radarScaleMode}
+                thresholdPct={radarThresholdPct}
+              />
+            )}
+          />
         </div>
       ) : null}
 

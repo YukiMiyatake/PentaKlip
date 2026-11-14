@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
 import { LaneFilterBar } from "../components/LaneFilterBar";
+import { RadarLayoutControls } from "../components/RadarLayoutControls";
+import { RadarLayoutGrid } from "../components/RadarLayoutGrid";
 import { RadarStatChart } from "../components/RadarStatChart";
 import { RadarThresholdControl } from "../components/RadarThresholdControl";
+import {
+  ensureRadarLayout,
+  loadRadarLayout,
+  moveRadarChart,
+  resetRadarLayout,
+  resizeRadarLayout,
+  saveRadarLayout,
+  type RadarLayoutState,
+} from "../radarLayout";
 import {
   filterChartsByLane,
   loadLaneFilter,
@@ -87,6 +98,9 @@ export function ObsOverlayPage() {
   const [radarThresholdPct, setRadarThresholdPct] = useState(() =>
     resolveThreshold(q),
   );
+  const [radarLayout, setRadarLayout] = useState<RadarLayoutState>(() =>
+    loadRadarLayout(),
+  );
   const [allRadars, setAllRadars] = useState<ChartSpec[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
@@ -121,9 +135,16 @@ export function ObsOverlayPage() {
     setLaneFilter(lane);
     setRadarScaleMode(mode);
     setRadarThresholdPct(threshold);
+    setRadarLayout(loadRadarLayout());
     applyFiltersToUrl(lane, mode, threshold);
     setHiddenPlayers(resolveHidden(latest));
   }, [applyFiltersToUrl]);
+
+  function persistRadarLayout(next: RadarLayoutState) {
+    setRadarLayout(next);
+    saveRadarLayout(next);
+    notifyViewFiltersChanged();
+  }
 
   function onLaneChange(next: LaneFilter) {
     setLaneFilter(next);
@@ -231,7 +252,8 @@ export function ObsOverlayPage() {
         ev.key === "pentaklip.hiddenPlayerStats" ||
         ev.key === "pentaklip.laneFilter" ||
         ev.key === "pentaklip.radarThresholdPct" ||
-        ev.key === "pentaklip.radarScaleMode"
+        ev.key === "pentaklip.radarScaleMode" ||
+        ev.key === "pentaklip.radarLayout"
       ) {
         syncFiltersFromStorage();
       }
@@ -286,17 +308,53 @@ export function ObsOverlayPage() {
         ) : null}
       </div>
       {error ? <p className="error obs-error">{error}</p> : null}
-      <div className="obs-radar-grid">
-        {radars.map((chart) => (
-          <RadarStatChart
-            key={chart.chart_id}
-            chart={chart}
+      {radars.length > 0 ? (
+        <>
+          <RadarLayoutControls
+            layout={ensureRadarLayout(
+              radarLayout,
+              radars.map((c) => c.chart_id),
+            )}
             compact
-            scaleMode={radarScaleMode}
-            thresholdPct={radarThresholdPct}
+            onColsChange={(cols) => {
+              const ids = radars.map((c) => c.chart_id);
+              persistRadarLayout(
+                resizeRadarLayout(radarLayout, cols, radarLayout.rows, ids),
+              );
+            }}
+            onRowsChange={(rows) => {
+              const ids = radars.map((c) => c.chart_id);
+              persistRadarLayout(
+                resizeRadarLayout(radarLayout, radarLayout.cols, rows, ids),
+              );
+            }}
+            onReset={() => {
+              persistRadarLayout(
+                resetRadarLayout(radars.map((c) => c.chart_id)),
+              );
+            }}
           />
-        ))}
-      </div>
+          <RadarLayoutGrid
+            charts={radars}
+            layout={radarLayout}
+            compact
+            onMove={(chartId, toSlot) => {
+              const ids = radars.map((c) => c.chart_id);
+              persistRadarLayout(
+                moveRadarChart(radarLayout, chartId, toSlot, ids),
+              );
+            }}
+            renderChart={(chart) => (
+              <RadarStatChart
+                chart={chart}
+                compact
+                scaleMode={radarScaleMode}
+                thresholdPct={radarThresholdPct}
+              />
+            )}
+          />
+        </>
+      ) : null}
       {!busy && radars.length === 0 && !error ? (
         <p className="hint obs-hint">
           レーダーがありません。スタッツ画面でレーン / プレイヤーを選び、OBS
