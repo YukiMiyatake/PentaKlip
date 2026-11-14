@@ -33,7 +33,12 @@ function findRememberedTarget(
   return items.find((item) => item.filename.toLowerCase() === name) ?? null;
 }
 
-export function ReplacePage() {
+type Props = {
+  /** When true, reload folder lists (tab became visible). */
+  active?: boolean;
+};
+
+export function ReplacePage({ active = true }: Props) {
   const [prefs, setPrefs] = useState<UiPreferences | null>(null);
   const [replaysDir, setReplaysDir] = useState("");
   const [defaultReplaysDir, setDefaultReplaysDir] = useState("");
@@ -57,6 +62,7 @@ export function ReplacePage() {
   }
 
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
     (async () => {
       try {
@@ -84,7 +90,7 @@ export function ReplacePage() {
             // Remembered file missing — keep preference until user picks another.
           }
         }
-        const dir = p.last_source_dir || "";
+        const dir = p.last_source_dir || sourceDir || "";
         if (dir) {
           setSourceDir(dir);
           try {
@@ -104,7 +110,8 @@ export function ReplacePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when tab becomes visible
+  }, [active]);
 
   async function rememberPrefs(partial: Partial<UiPreferences>) {
     const saved = await patchUiPreferences(partial);
