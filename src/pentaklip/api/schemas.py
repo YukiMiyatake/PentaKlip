@@ -148,6 +148,8 @@ class AggregateStatsRequest(BaseModel):
 class AggregateFolderStatsRequest(BaseModel):
     directory: str
     apply_roster: bool = True
+    # Quiet local tweak for review; UI label is only 「デバッグ」.
+    debug: bool = False
 
 
 class EnrichScoreboardSsRequest(BaseModel):

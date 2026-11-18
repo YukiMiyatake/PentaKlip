@@ -208,6 +208,22 @@ a.btn {
   align-items: center;
 }
 
+.debug-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+}
+
+.debug-check input {
+  accent-color: var(--muted);
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

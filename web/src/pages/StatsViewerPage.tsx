@@ -87,6 +87,7 @@ export function StatsViewerPage({ active = true }: Props) {
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [debugBoost, setDebugBoost] = useState(false);
   const [laneFilter, setLaneFilter] = useState<LaneFilter>(() => loadLaneFilter());
   const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
     loadHiddenPlayers(),
@@ -238,6 +239,7 @@ export function StatsViewerPage({ active = true }: Props) {
       const result = await aggregateStatsFolder({
         directory: directory.trim(),
         apply_roster: true,
+        debug: debugBoost,
       });
       setAggregated(result.aggregated);
       const hidden = await resolveHiddenForAggregate(result.aggregated);
@@ -354,6 +356,15 @@ export function StatsViewerPage({ active = true }: Props) {
           >
             {busy ? "集計中…" : "集計"}
           </button>
+          <label className="debug-check">
+            <input
+              type="checkbox"
+              checked={debugBoost}
+              disabled={busy}
+              onChange={(e) => setDebugBoost(e.target.checked)}
+            />
+            デバッグ
+          </label>
         </div>
         <p className="hint">自動切り分けの出力ベースを設定すると「出力ベース\stats」に追従します</p>
         <div className="row actions">
