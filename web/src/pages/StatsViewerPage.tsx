@@ -239,7 +239,7 @@ export function StatsViewerPage({ active = true }: Props) {
       const result = await aggregateStatsFolder({
         directory: directory.trim(),
         apply_roster: true,
-        debug: debugBoost,
+        debug_boost: debugBoost,
       });
       setAggregated(result.aggregated);
       const hidden = await resolveHiddenForAggregate(result.aggregated);
