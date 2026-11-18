@@ -725,15 +725,15 @@ table.stats th {
   align-items: stretch;
 }
 
-.radar-layout-header {
-  grid-column: 1 / -1;
+.radar-layout-header-cell {
   min-height: 44px;
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(12, 16, 14, 0.55);
+  box-sizing: border-box;
 }
 
 .radar-layout-header-input {
@@ -765,9 +765,9 @@ table.stats th {
   text-overflow: ellipsis;
 }
 
-.radar-layout-board.compact .radar-layout-header {
+.radar-layout-board.compact .radar-layout-header-cell {
   min-height: 38px;
-  padding: 4px 10px;
+  padding: 4px 8px;
 }
 
 .radar-layout-board.compact .radar-layout-header-input,
