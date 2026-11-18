@@ -18,14 +18,35 @@ _DAMAGE_KEYS = (
 )
 
 
-def _is_debug_target(player: PlayerPositionAggregate) -> bool:
-    if player.position != Position.MIDDLE:
-        return False
-    name = riot_game_name_only(player.player_id)
+def _name_hits_target(name: str) -> bool:
     if not name:
         return False
     target = _DEBUG_TARGET_NAME
-    return name == target or target in name or name in target
+    compact = name.replace(" ", "")
+    target_compact = target.replace(" ", "")
+    return (
+        name == target
+        or target in name
+        or name in target
+        or compact == target_compact
+        or target_compact in compact
+        or "yojo" in compact
+    )
+
+
+def _is_debug_target(player: PlayerPositionAggregate) -> bool:
+    if player.position != Position.MIDDLE:
+        return False
+    candidates = [
+        player.player_id,
+        player.identity.riot_id_game_name if player.identity else None,
+        player.identity.summoner_name if player.identity else None,
+        player.identity.player_id if player.identity else None,
+    ]
+    for raw in candidates:
+        if _name_hits_target(riot_game_name_only(raw)):
+            return True
+    return False
 
 
 def _boost_scalar(value: object, mult: float, *, cap: float | None = None) -> float | None:
@@ -54,6 +75,7 @@ def apply_debug_stat_boost(aggregated: AggregatedReplayStats) -> AggregatedRepla
             players.append(player)
             continue
         scalars = dict(player.scalars)
+        changed = False
         for key in _DAMAGE_KEYS:
             if key not in scalars or scalars[key] is None:
                 continue
@@ -66,13 +88,16 @@ def apply_debug_stat_boost(aggregated: AggregatedReplayStats) -> AggregatedRepla
                     if key == StatKey.DAMAGE_TO_CHAMPIONS.value
                     else boosted_val
                 )
+                changed = True
         kp_key = StatKey.KILL_PARTICIPATION.value
         if kp_key in scalars and scalars[kp_key] is not None:
             boosted_kp = _boost_scalar(scalars[kp_key], _KP_MULT, cap=100.0)
             if boosted_kp is not None:
                 scalars[kp_key] = boosted_kp
+                changed = True
         players.append(player.model_copy(update={"scalars": scalars}))
-        boosted += 1
+        if changed:
+            boosted += 1
 
     meta = dict(aggregated.meta or {})
     if boosted:

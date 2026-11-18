@@ -83,6 +83,26 @@ def test_debug_boost_targets_mid_yojo_only() -> None:
     assert boosted.meta.get("debug_boost_applied") == 1
 
 
+def test_debug_boost_matches_compact_name() -> None:
+    target = _player(
+        "X9YoJo#JoJo",
+        Position.MIDDLE,
+        dpm=100.0,
+        dmg_share=20.0,
+        kp=40.0,
+        damage=1000,
+    )
+    boosted = apply_debug_stat_boost(
+        AggregatedReplayStats(
+            original_match_id=None,
+            game_duration_sec=60.0,
+            players=[target],
+            meta={},
+        )
+    ).players[0]
+    assert boosted.scalars[StatKey.DPM.value] == 120.0
+
+
 def test_debug_boost_caps_percentages() -> None:
     target = _player(
         "X9 YoJo#JoJo",
