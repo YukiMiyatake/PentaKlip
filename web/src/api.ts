@@ -54,6 +54,7 @@ export function resetDisplaySettings(): Promise<DisplaySettings> {
 export function aggregateStatsFolder(body: {
   directory: string;
   apply_roster?: boolean;
+  debug_boost?: boolean;
 }): Promise<{
   directory: string;
   file_count: number;

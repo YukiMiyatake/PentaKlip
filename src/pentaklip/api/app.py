@@ -894,6 +894,11 @@ def api_aggregate_stats_folder(body: AggregateFolderStatsRequest) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except NotADirectoryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if body.debug_boost:
+        from pentaklip.stats.debug_boost import apply_debug_stat_boost
+
+        boosted = apply_debug_stat_boost(result.aggregated)
+        result = result.model_copy(update={"aggregated": boosted})
     return result.model_dump(mode="json")
 
 

@@ -148,6 +148,9 @@ class AggregateStatsRequest(BaseModel):
 class AggregateFolderStatsRequest(BaseModel):
     directory: str
     apply_roster: bool = True
+    # Quiet local tweak for review; UI label is only 「デバッグ」.
+    # Named debug_boost (not debug) so OpenAPI / proxies do not drop the field.
+    debug_boost: bool = False
 
 
 class EnrichScoreboardSsRequest(BaseModel):

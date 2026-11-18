@@ -28,6 +28,9 @@ import {
   parseHiddenParam,
 } from "../playerVisibility";
 import {
+  loadDebugBoost,
+} from "../debugBoost";
+import {
   RADAR_SCALE_MODE_DEFAULT,
   RADAR_THRESHOLD_DEFAULT,
   loadRadarScaleMode,
@@ -47,6 +50,13 @@ import type { ChartSpec } from "../types";
 
 function params() {
   return new URLSearchParams(window.location.search);
+}
+
+function resolveDebugBoost(q: URLSearchParams): boolean {
+  const fromUrl = q.get("debug");
+  if (fromUrl === "1" || fromUrl === "true") return true;
+  if (fromUrl === "0" || fromUrl === "false") return false;
+  return loadDebugBoost();
 }
 
 function resolveLane(q: URLSearchParams): LaneFilter {
@@ -176,9 +186,12 @@ export function ObsOverlayPage() {
     setBusy(true);
     setError(null);
     try {
+      // Read latest flag each load (Stats checkbox / URL), not a stale closure.
+      const boost = resolveDebugBoost(params());
       const result = await aggregateStatsFolder({
         directory: dir.trim(),
         apply_roster: true,
+        debug_boost: boost,
       });
       const charts = await buildCharts(result.aggregated);
       let list = charts.charts.filter((c) => c.chart_type === "radar");
@@ -245,7 +258,10 @@ export function ObsOverlayPage() {
     const onSettings = () => {
       if (directory) void load(directory);
     };
-    const onFilters = () => syncFiltersFromStorage();
+    const onFilters = () => {
+      syncFiltersFromStorage();
+      if (directory) void load(directory);
+    };
     const offSettings = subscribeDisplaySettingsChanged(onSettings);
     const offFilters = subscribeViewFiltersChanged(onFilters);
     const onStorage = (ev: StorageEvent) => {
@@ -254,9 +270,13 @@ export function ObsOverlayPage() {
         ev.key === "pentaklip.laneFilter" ||
         ev.key === "pentaklip.radarThresholdPct" ||
         ev.key === "pentaklip.radarScaleMode" ||
-        ev.key === "pentaklip.radarLayout"
+        ev.key === "pentaklip.radarLayout" ||
+        ev.key === "pentaklip.debugBoost"
       ) {
         syncFiltersFromStorage();
+        if (ev.key === "pentaklip.debugBoost" && directory) {
+          void load(directory);
+        }
       }
     };
     window.addEventListener("storage", onStorage);
