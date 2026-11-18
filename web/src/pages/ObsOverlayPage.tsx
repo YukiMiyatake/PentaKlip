@@ -112,7 +112,6 @@ export function ObsOverlayPage() {
   const [radarLayout, setRadarLayout] = useState<RadarLayoutState>(() =>
     loadRadarLayout(),
   );
-  const [debugBoost, setDebugBoost] = useState(() => resolveDebugBoost(q));
   const [allRadars, setAllRadars] = useState<ChartSpec[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
@@ -144,12 +143,10 @@ export function ObsOverlayPage() {
     const lane = loadLaneFilter();
     const mode = loadRadarScaleMode();
     const threshold = loadRadarThresholdPct();
-    const nextDebug = resolveDebugBoost(latest);
     setLaneFilter(lane);
     setRadarScaleMode(mode);
     setRadarThresholdPct(threshold);
     setRadarLayout(loadRadarLayout());
-    setDebugBoost(nextDebug);
     applyFiltersToUrl(lane, mode, threshold);
     setHiddenPlayers(resolveHidden(latest));
   }, [applyFiltersToUrl]);
@@ -191,7 +188,6 @@ export function ObsOverlayPage() {
     try {
       // Read latest flag each load (Stats checkbox / URL), not a stale closure.
       const boost = resolveDebugBoost(params());
-      setDebugBoost(boost);
       const result = await aggregateStatsFolder({
         directory: dir.trim(),
         apply_roster: true,

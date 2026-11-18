@@ -84,7 +84,7 @@ def apply_debug_stat_boost(aggregated: AggregatedReplayStats) -> AggregatedRepla
             boosted_val = _boost_scalar(scalars[key], _DAMAGE_MULT, cap=cap)
             if boosted_val is not None:
                 scalars[key] = (
-                    int(round(boosted_val))
+                    round(boosted_val)
                     if key == StatKey.DAMAGE_TO_CHAMPIONS.value
                     else boosted_val
                 )
