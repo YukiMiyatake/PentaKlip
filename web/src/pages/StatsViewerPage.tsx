@@ -41,6 +41,10 @@ import {
   saveHiddenPlayers,
 } from "../playerVisibility";
 import {
+  loadDebugBoost,
+  saveDebugBoost,
+} from "../debugBoost";
+import {
   RADAR_SCALE_MODE_DEFAULT,
   RADAR_THRESHOLD_DEFAULT,
   loadRadarScaleMode,
@@ -87,7 +91,7 @@ export function StatsViewerPage({ active = true }: Props) {
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [debugBoost, setDebugBoost] = useState(false);
+  const [debugBoost, setDebugBoost] = useState(() => loadDebugBoost());
   const [laneFilter, setLaneFilter] = useState<LaneFilter>(() => loadLaneFilter());
   const [hiddenPlayers, setHiddenPlayers] = useState<Set<string>>(() =>
     loadHiddenPlayers(),
@@ -361,7 +365,12 @@ export function StatsViewerPage({ active = true }: Props) {
               type="checkbox"
               checked={debugBoost}
               disabled={busy}
-              onChange={(e) => setDebugBoost(e.target.checked)}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setDebugBoost(next);
+                saveDebugBoost(next);
+                notifyViewFiltersChanged();
+              }}
             />
             デバッグ
           </label>
