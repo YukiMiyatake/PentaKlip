@@ -1,5 +1,7 @@
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
   type ReactNode,
@@ -11,6 +13,7 @@ import {
   RADAR_CELL_WIDTH_COMPACT,
   RADAR_HEADER_MAX_LEN,
   ensureRadarLayout,
+  normalizeColumnHeaders,
   type RadarLayoutState,
 } from "../radarLayout";
 import type { ChartSpec } from "../types";
@@ -19,18 +22,24 @@ type Props = {
   charts: ChartSpec[];
   layout: RadarLayoutState;
   onMove: (chartId: string, toSlot: number) => void;
-  onHeaderChange?: (text: string) => void;
+  /** When set with showHeaders, per-column team name inputs are shown (OBS). */
+  onColumnHeaderChange?: (col: number, text: string) => void;
+  /** Show the top team-name row (OBS only). */
+  showHeaders?: boolean;
   renderChart: (chart: ChartSpec) => ReactNode;
   editable?: boolean;
   compact?: boolean;
   className?: string;
 };
 
+const HEADER_PERSIST_MS = 400;
+
 export function RadarLayoutGrid({
   charts,
   layout,
   onMove,
-  onHeaderChange,
+  onColumnHeaderChange,
+  showHeaders = false,
   renderChart,
   editable = true,
   compact = false,
@@ -57,10 +66,49 @@ export function RadarLayoutGrid({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overSlot, setOverSlot] = useState<number | null>(null);
 
+  const [draftHeaders, setDraftHeaders] = useState(() =>
+    normalizeColumnHeaders(ensured.columnHeaders, ensured.cols),
+  );
+  const focusedColRef = useRef<number | null>(null);
+  const persistTimerRef = useRef<number | null>(null);
+  const draftHeadersRef = useRef(draftHeaders);
+  draftHeadersRef.current = draftHeaders;
+  const onColumnHeaderChangeRef = useRef(onColumnHeaderChange);
+  onColumnHeaderChangeRef.current = onColumnHeaderChange;
+
+  const headersKey = ensured.columnHeaders.join("\u0001");
+  useEffect(() => {
+    if (focusedColRef.current != null) return;
+    setDraftHeaders(normalizeColumnHeaders(ensured.columnHeaders, ensured.cols));
+  }, [ensured.cols, headersKey, ensured.columnHeaders]);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, []);
+
+  function flushHeader(col: number, text: string) {
+    onColumnHeaderChangeRef.current?.(col, text);
+  }
+
+  function scheduleHeaderPersist(col: number, text: string) {
+    if (persistTimerRef.current != null) {
+      window.clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = window.setTimeout(() => {
+      persistTimerRef.current = null;
+      flushHeader(col, text);
+    }, HEADER_PERSIST_MS);
+  }
+
   const cellW = compact ? RADAR_CELL_WIDTH_COMPACT : RADAR_CELL_WIDTH;
   const cellH = compact ? RADAR_CELL_HEIGHT_COMPACT : RADAR_CELL_HEIGHT;
   const capacity = ensured.cols * ensured.rows;
-  const canEditHeader = editable && typeof onHeaderChange === "function";
+  const canEditHeader =
+    showHeaders && editable && typeof onColumnHeaderChange === "function";
 
   function onDragStart(chartId: string, ev: DragEvent) {
     if (!editable) return;
@@ -149,26 +197,53 @@ export function RadarLayoutGrid({
       className={`radar-layout-board${compact ? " compact" : ""}${className ? ` ${className}` : ""}`}
       style={{
         gridTemplateColumns: `repeat(${ensured.cols}, ${cellW}px)`,
-        gridTemplateRows: `auto repeat(${ensured.rows}, ${cellH}px)`,
+        gridTemplateRows: showHeaders
+          ? `auto repeat(${ensured.rows}, ${cellH}px)`
+          : `repeat(${ensured.rows}, ${cellH}px)`,
       }}
     >
-      <div className="radar-layout-header">
-        {canEditHeader ? (
-          <input
-            className="radar-layout-header-input"
-            type="text"
-            value={ensured.headerText}
-            maxLength={RADAR_HEADER_MAX_LEN}
-            placeholder="チーム名"
-            aria-label="チーム名"
-            onChange={(e) => onHeaderChange(e.target.value)}
-          />
-        ) : (
-          <div className="radar-layout-header-text">
-            {ensured.headerText || "\u00a0"}
-          </div>
-        )}
-      </div>
+      {showHeaders
+        ? Array.from({ length: ensured.cols }, (_, col) => (
+            <div key={`header-${col}`} className="radar-layout-header-cell">
+              {canEditHeader ? (
+                <input
+                  className="radar-layout-header-input"
+                  type="text"
+                  value={draftHeaders[col] ?? ""}
+                  maxLength={RADAR_HEADER_MAX_LEN}
+                  placeholder={`チーム名 ${col + 1}`}
+                  aria-label={`列 ${col + 1} のチーム名`}
+                  onFocus={() => {
+                    focusedColRef.current = col;
+                  }}
+                  onChange={(e) => {
+                    const text = e.target.value;
+                    setDraftHeaders((prev) => {
+                      const next = normalizeColumnHeaders(prev, ensured.cols);
+                      next[col] = text;
+                      return next;
+                    });
+                    scheduleHeaderPersist(col, text);
+                  }}
+                  onBlur={() => {
+                    focusedColRef.current = null;
+                    if (persistTimerRef.current != null) {
+                      window.clearTimeout(persistTimerRef.current);
+                      persistTimerRef.current = null;
+                    }
+                    flushHeader(col, draftHeadersRef.current[col] ?? "");
+                  }}
+                />
+              ) : (
+                <div className="radar-layout-header-text">
+                  {draftHeaders[col] ||
+                    ensured.columnHeaders[col] ||
+                    "\u00a0"}
+                </div>
+              )}
+            </div>
+          ))
+        : null}
       {cells}
     </div>
   );
