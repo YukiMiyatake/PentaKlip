@@ -1,5 +1,8 @@
 import { toBlob } from "html-to-image";
 
+/** Opaque page background (`--bg`) so exported PNG is not transparent. */
+const PNG_BACKGROUND = "#0f1412";
+
 type SavePickerWindow = Window & {
   showSaveFilePicker?: (options?: {
     suggestedName?: string;
@@ -84,6 +87,7 @@ export async function exportElementAsPng(
   const prevOverflow = element.style.overflow;
   const prevWidth = element.style.width;
   const prevHeight = element.style.height;
+  const prevBackground = element.style.backgroundColor;
 
   try {
     // Expand so scroll* matches full content (no clipped edges).
@@ -91,6 +95,7 @@ export async function exportElementAsPng(
     element.style.overflow = "visible";
     element.style.width = "max-content";
     element.style.height = "max-content";
+    element.style.backgroundColor = PNG_BACKGROUND;
 
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve());
@@ -109,6 +114,8 @@ export async function exportElementAsPng(
       height,
       canvasWidth: width,
       canvasHeight: height,
+      // Force opaque canvas; OBS overlay itself is transparent.
+      backgroundColor: PNG_BACKGROUND,
       style: {
         maxWidth: "none",
         overflow: "visible",
@@ -116,6 +123,7 @@ export async function exportElementAsPng(
         height: `${height}px`,
         transform: "none",
         margin: "0",
+        backgroundColor: PNG_BACKGROUND,
       },
       filter: (node) => {
         if (!(node instanceof HTMLElement)) return true;
@@ -130,6 +138,7 @@ export async function exportElementAsPng(
     element.style.overflow = prevOverflow;
     element.style.width = prevWidth;
     element.style.height = prevHeight;
+    element.style.backgroundColor = prevBackground;
     restoreInputs();
   }
 }
