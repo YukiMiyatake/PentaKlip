@@ -1187,6 +1187,16 @@ body.obs-overlay #root {
   opacity: 0.85;
 }
 
+.obs-png-export {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+}
+
+.obs-export-target {
+  width: max-content;
+  max-width: 100%;
+}
+
 .obs-radar-grid {
   display: grid;
   gap: 12px;
