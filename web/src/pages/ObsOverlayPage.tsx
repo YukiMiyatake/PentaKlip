@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
+import { exportObsStatsCsv } from "../exportCsv";
 import { defaultObsPngName, exportElementAsPng } from "../exportPng";
 import { LaneFilterBar } from "../components/LaneFilterBar";
 import { RadarLayoutControls } from "../components/RadarLayoutControls";
@@ -118,6 +119,7 @@ export function ObsOverlayPage() {
   const [meta, setMeta] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const exportTargetRef = useRef<HTMLDivElement>(null);
 
   const radars = useMemo(() => {
@@ -192,6 +194,19 @@ export function ObsOverlayPage() {
       setError(String(err));
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function onExportCsv() {
+    if (radars.length === 0 || exportingCsv) return;
+    setExportingCsv(true);
+    setError(null);
+    try {
+      await exportObsStatsCsv(radars);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setExportingCsv(false);
     }
   }
 
@@ -325,13 +340,23 @@ export function ObsOverlayPage() {
         <span className="mono">OBS · radar</span>
         <button
           type="button"
-          className="btn ghost obs-png-export"
+          className="btn ghost obs-export-btn"
           disabled={radars.length === 0 || exporting}
           onClick={() => {
             void onExportPng();
           }}
         >
           {exporting ? "PNG出力中…" : "PNG出力"}
+        </button>
+        <button
+          type="button"
+          className="btn ghost obs-export-btn"
+          disabled={radars.length === 0 || exportingCsv}
+          onClick={() => {
+            void onExportCsv();
+          }}
+        >
+          {exportingCsv ? "CSV出力中…" : "CSV出力"}
         </button>
         <LaneFilterBar
           value={laneFilter}

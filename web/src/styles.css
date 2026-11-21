@@ -1187,7 +1187,7 @@ body.obs-overlay #root {
   opacity: 0.85;
 }
 
-.obs-png-export {
+.obs-export-btn {
   padding: 5px 10px;
   font-size: 0.78rem;
 }
