@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { aggregateStatsFolder, buildCharts, getUiPreferences } from "../api";
+import { defaultObsPngName, exportElementAsPng } from "../exportPng";
 import { LaneFilterBar } from "../components/LaneFilterBar";
 import { RadarLayoutControls } from "../components/RadarLayoutControls";
 import { RadarLayoutGrid } from "../components/RadarLayoutGrid";
@@ -116,6 +117,8 @@ export function ObsOverlayPage() {
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportTargetRef = useRef<HTMLDivElement>(null);
 
   const radars = useMemo(() => {
     const byLane = filterChartsByLane(allRadars, laneFilter);
@@ -176,6 +179,20 @@ export function ObsOverlayPage() {
     saveRadarThresholdPct(next);
     applyFiltersToUrl(laneFilter, radarScaleMode, next);
     notifyViewFiltersChanged();
+  }
+
+  async function onExportPng() {
+    const target = exportTargetRef.current;
+    if (!target || radars.length === 0 || exporting) return;
+    setExporting(true);
+    setError(null);
+    try {
+      await exportElementAsPng(target, defaultObsPngName());
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setExporting(false);
+    }
   }
 
   const load = useCallback(async (dir: string) => {
@@ -306,6 +323,16 @@ export function ObsOverlayPage() {
     <div className="obs-root">
       <div className="obs-toolbar">
         <span className="mono">OBS · radar</span>
+        <button
+          type="button"
+          className="btn ghost obs-png-export"
+          disabled={radars.length === 0 || exporting}
+          onClick={() => {
+            void onExportPng();
+          }}
+        >
+          {exporting ? "PNG出力中…" : "PNG出力"}
+        </button>
         <LaneFilterBar
           value={laneFilter}
           onChange={onLaneChange}
@@ -358,29 +385,33 @@ export function ObsOverlayPage() {
               );
             }}
           />
-          <RadarLayoutGrid
-            charts={radars}
-            layout={radarLayout}
-            compact
-            showHeaders
-            onMove={(chartId, toSlot) => {
-              const ids = radars.map((c) => c.chart_id);
-              persistRadarLayout(
-                moveRadarChart(radarLayout, chartId, toSlot, ids),
-              );
-            }}
-            onColumnHeaderChange={(col, text) => {
-              persistRadarLayout(setRadarColumnHeader(radarLayout, col, text));
-            }}
-            renderChart={(chart) => (
-              <RadarStatChart
-                chart={chart}
-                compact
-                scaleMode={radarScaleMode}
-                thresholdPct={radarThresholdPct}
-              />
-            )}
-          />
+          <div className="obs-export-target" ref={exportTargetRef}>
+            <RadarLayoutGrid
+              charts={radars}
+              layout={radarLayout}
+              compact
+              showHeaders
+              onMove={(chartId, toSlot) => {
+                const ids = radars.map((c) => c.chart_id);
+                persistRadarLayout(
+                  moveRadarChart(radarLayout, chartId, toSlot, ids),
+                );
+              }}
+              onColumnHeaderChange={(col, text) => {
+                persistRadarLayout(
+                  setRadarColumnHeader(radarLayout, col, text),
+                );
+              }}
+              renderChart={(chart) => (
+                <RadarStatChart
+                  chart={chart}
+                  compact
+                  scaleMode={radarScaleMode}
+                  thresholdPct={radarThresholdPct}
+                />
+              )}
+            />
+          </div>
         </>
       ) : null}
       {!busy && radars.length === 0 && !error ? (
