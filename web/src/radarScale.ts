@@ -166,6 +166,51 @@ function mapSigned(
   return clamp01((value + half) / (2 * half));
 }
 
+/**
+ * Signed axes (CSD15 / LVLD15): lane average is often near 0, so |baseline|
+ * must not be used as the zoom reference (it collapses the scale).
+ */
+function signedHalfRange(peak: number, span: number): number {
+  return Math.max(peak * span, 1e-9);
+}
+
+function normsSignedAvgCenter(
+  player: number | null,
+  baseline: number | null,
+  peak: number,
+  span: number,
+): { player_norm: number; baseline_norm: number } {
+  const base = baseline ?? 0;
+  const half = signedHalfRange(peak, span);
+  const map = (v: number | null): number => {
+    if (v == null) return 0.5;
+    return clamp01(0.5 + 0.5 * ((v - base) / half));
+  };
+  return { player_norm: map(player), baseline_norm: 0.5 };
+}
+
+function normsSignedAvgOuter(
+  player: number | null,
+  baseline: number | null,
+  peak: number,
+  span: number,
+): { player_norm: number; baseline_norm: number } {
+  const base = baseline ?? 0;
+  const half = signedHalfRange(peak, span);
+  const ring = AVG_OUTER_RING;
+  const map = (v: number | null): number => {
+    if (v == null) return 0;
+    const delta = v - base;
+    const roomOut = 1 - ring;
+    const roomIn = ring;
+    if (delta >= 0) {
+      return clamp01(ring + roomOut * (delta / half));
+    }
+    return clamp01(ring + roomIn * (delta / half));
+  };
+  return { player_norm: map(player), baseline_norm: ring };
+}
+
 /** Current: outer = peak, floor = peak*(1-span). */
 function normsPeakFloor(
   player: number | null,
@@ -263,12 +308,26 @@ export function radarNormsForScale(
   const signed = Boolean(row.signed);
   const peak = Math.max(asNumber(row.max) ?? 0, 1e-9);
 
+  // CSD15 / LVLD15 must still honor center / avg_outer (baseline placement).
+  // The old path always used mapSigned → ~0 averages sat at the center ring.
   if (signed) {
-    const signedSpan = mode === "full" ? 1 : span;
-    return {
-      player_norm: mapSigned(player, peak, signedSpan),
-      baseline_norm: mapSigned(baseline, peak, signedSpan),
-    };
+    switch (mode) {
+      case "center":
+        return normsSignedAvgCenter(player, baseline, peak, span);
+      case "avg_outer":
+        return normsSignedAvgOuter(player, baseline, peak, span);
+      case "full":
+        return {
+          player_norm: mapSigned(player, peak, 1),
+          baseline_norm: mapSigned(baseline, peak, 1),
+        };
+      case "peak":
+      default:
+        return {
+          player_norm: mapSigned(player, peak, span),
+          baseline_norm: mapSigned(baseline, peak, span),
+        };
+    }
   }
 
   switch (mode) {
