@@ -39,6 +39,9 @@ _RADAR_LOWER_BETTER = {
 # Cap axes so radar stays readable; allow more room for jungle objectives.
 _RADAR_MAX_AXES = 8
 
+# Lane-wide peak for radar axes: 100 = max(|values|); try 90 to soften one outlier.
+_RADAR_LANE_PEAK_PERCENTILE = 100.0
+
 _POSITION_ORDER = [
     Position.TOP,
     Position.JUNGLE,
@@ -230,6 +233,53 @@ def _normalize_radar_value(
     return (1.0 - ratio) if lower_is_better else ratio
 
 
+def _percentile(sorted_vals: list[float], percentile: float) -> float:
+    """Linear-interpolation percentile; ``sorted_vals`` must be non-empty and sorted."""
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    p = max(0.0, min(100.0, percentile)) / 100.0
+    idx = p * (len(sorted_vals) - 1)
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    frac = idx - lo
+    return sorted_vals[lo] * (1.0 - frac) + sorted_vals[hi] * frac
+
+
+def _axis_peak_from_values(
+    values: list[float],
+    *,
+    percentile: float = _RADAR_LANE_PEAK_PERCENTILE,
+) -> float:
+    """Peak from a lane cohort: max or high percentile of absolute values."""
+    if not values:
+        return 1.0
+    abs_vals = sorted(abs(v) for v in values)
+    # With tiny cohorts a percentile collapses to the same as max.
+    if percentile >= 100.0 or len(abs_vals) < 3:
+        peak = abs_vals[-1]
+    else:
+        peak = _percentile(abs_vals, percentile)
+    return peak if peak > 0 else 1.0
+
+
+def _lane_peaks_for_axes(
+    players: list[PlayerPositionAggregate],
+    axes: list[StatKey],
+    *,
+    percentile: float = _RADAR_LANE_PEAK_PERCENTILE,
+) -> dict[str, float]:
+    """Shared per-axis peak across everyone on the lane (not per focus player)."""
+    peaks: dict[str, float] = {}
+    for key in axes:
+        vals = [
+            v
+            for player in players
+            if (v := _as_number(player.scalars.get(key.value))) is not None
+        ]
+        peaks[key.value] = _axis_peak_from_values(vals, percentile=percentile)
+    return peaks
+
+
 def _radar_charts_for_position(
     position: Position,
     players: list[PlayerPositionAggregate],
@@ -246,6 +296,10 @@ def _radar_charts_for_position(
     lane_axes = _radar_axis_keys(columns, players=players)
     if len(lane_axes) < 3 or not players:
         return []
+
+    # Shared scale per axis across the lane so high-variance stats (KDA) are not
+    # remapped to max(player, avg) on every chart (which forces extremes).
+    lane_peaks = _lane_peaks_for_axes(players, lane_axes)
 
     charts: list[ChartSpec] = []
     for focus in sorted(players, key=lambda p: p.player_id.casefold()):
@@ -264,8 +318,7 @@ def _radar_charts_for_position(
         for key in axes:
             player_v = _as_number(focus.scalars.get(key.value))
             baseline_v = baseline_vals.get(key.value)
-            present = [v for v in (player_v, baseline_v) if v is not None]
-            peak = max((abs(v) for v in present), default=1.0)
+            peak = lane_peaks.get(key.value, 1.0)
             if peak <= 0:
                 peak = 1.0
             lower = key in _RADAR_LOWER_BETTER
